@@ -1,0 +1,34 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+db = { path = "../db" }
+ce = { path = "../ce" }
+myerrors = { path = "../myerrors" }
+myhandlers = { path = "../myhandlers" }
+templates = { path = "../templates" }
+axum = "0.8.8"
+tokio = { version = "1.49.0", features = ["full"] }
+leptos = { version = "0.8.16", features = ["ssr"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "postgres"] }
+aws-config = { version = "1.8.14", features = ["behavior-version-latest"] }
+aws-sdk-costexplorer = "1.111.0"
+chrono = "0.4.44"
+serde = { version = "1.0.228", features = ["derive"] }
+clap = { version = "4.5.60", features = ["derive"] }
+anyhow = "1.0.102"
+env_logger = "0.11.9"
+log = "0.4.29"
+uuid = { version = "1.21.0", features = ["v4"] }
+async-trait = "0.1.89"
+config = "0.15.19"
+time = "0.3.47"
+tower-sessions = "0.15.0"
+tower-sessions-sqlx-store = { git = "https://github.com/llm-proxy-rs/tower-sessions-stores.git", version = "0.15.0", features = ["postgres"] }
+
+[dev-dependencies]
+tower = { version = "0.5.3", features = ["util"] }
+http-body-util = "0.1.3"
