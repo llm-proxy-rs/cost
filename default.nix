@@ -1,10 +1,11 @@
 {pkgs ? import (import ./npins).nixpkgs {}}: let
   mkPackage = {
     pname,
-    cargoFlags ? [],
+    cargoBuildFlags ? [],
   }:
     pkgs.rustPlatform.buildRustPackage {
-      inherit pname cargoFlags;
+      inherit pname cargoBuildFlags;
+      cargoTestFlags = cargoBuildFlags;
       cargoHash = "sha256-4LIKiCVLp5PMAkEdhPZiyKczAgR9Cfkw8mJv05yAWH4=";
       src = ./.;
       version = "0.1.0";
@@ -34,7 +35,7 @@
 
   adminPackage = mkPackage {
     pname = "cost-admin";
-    cargoFlags = ["--features" "admin"];
+    cargoBuildFlags = ["--features" "admin"];
   };
 in {
   default = mkImage {
