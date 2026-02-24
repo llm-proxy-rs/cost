@@ -6,7 +6,7 @@
     pkgs.rustPlatform.buildRustPackage {
       inherit pname cargoBuildFlags;
       cargoTestFlags = cargoBuildFlags;
-      cargoHash = "";
+      cargoHash = "sha256-4LIKiCVLp5PMAkEdhPZiyKczAgR9Cfkw8mJv05yAWH4=";
       src = ./.;
       version = "0.1.0";
     };
