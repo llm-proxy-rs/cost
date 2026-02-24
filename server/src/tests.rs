@@ -88,6 +88,10 @@ impl CostService for MockCostService {
     async fn list_models(&self) -> Vec<(String, String)> {
         vec![("cccc-dddd".to_string(), "claude-3-sonnet".to_string())]
     }
+
+    async fn get_user_id_by_email(&self, _email: &str) -> Option<String> {
+        Some("aaaa-bbbb".to_string())
+    }
 }
 
 fn mock_state(base: &str) -> AppState {

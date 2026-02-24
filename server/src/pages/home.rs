@@ -1,5 +1,5 @@
 use super::make_path;
-use templates::{Breadcrumb, InfoRow, Page, Subpage};
+use templates::{date_range_form, Breadcrumb, InfoRow, Page, Subpage};
 
 pub fn render(
     base: &str,
@@ -14,7 +14,10 @@ pub fn render(
         title: "Cost Explorer - Home".to_string(),
         breadcrumbs: vec![Breadcrumb::current("Cost Explorer")],
         info_rows: vec![
-            InfoRow::new("Date Range", &format!("{} to {}", start, end)),
+            InfoRow::raw(
+                "Date Range",
+                date_range_form(&make_path(base, ""), start, end),
+            ),
             InfoRow::new("Total Cost", &format!("{:.2} {}", total_cost, currency)),
         ],
         subpages: vec![
@@ -39,7 +42,10 @@ mod tests {
     #[test]
     fn render_contains_date_range() {
         let html = render("/", "2024-01-01", "2024-01-31", 0.0, "USD", 0, 0);
-        assert!(html.contains("2024-01-01 to 2024-01-31"));
+        assert!(html.contains(r#"value="2024-01-01"#));
+        assert!(html.contains(r#"value="2024-01-31"#));
+        assert!(html.contains(r#"type="date""#));
+        assert!(html.contains("Apply"));
     }
 
     #[test]

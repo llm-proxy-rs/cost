@@ -64,6 +64,12 @@ pub fn build_router(state: AppState) -> Router {
 async fn main() -> anyhow::Result<()> {
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("server=info"));
 
+    if cfg!(feature = "admin") {
+        log::info!("Running in ADMIN mode (all users visible)");
+    } else {
+        log::info!("Running in NORMAL mode (per-user filtering)");
+    }
+
     let args = Args::parse();
     let app_config = load_config(&args.config_file).await?;
 

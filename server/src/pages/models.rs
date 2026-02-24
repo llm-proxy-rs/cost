@@ -3,7 +3,7 @@ use common::CostByModel;
 use common::CostByUser;
 use leptos::either::Either;
 use leptos::prelude::*;
-use templates::{Breadcrumb, InfoRow, NavLink, Page};
+use templates::{date_range_form, Breadcrumb, InfoRow, NavLink, Page};
 
 pub fn render_index(base: &str, start: &str, end: &str, costs: &[CostByModel]) -> String {
     let costs = costs.to_vec();
@@ -23,7 +23,7 @@ pub fn render_index(base: &str, start: &str, end: &str, costs: &[CostByModel]) -
             })
         } else {
             Either::Right(view! {
-                <table>
+                <table class="data-table" data-export-name="cost_by_model">
                     <tr>
                         <th>"Model"</th>
                         <th>"Cost"</th>
@@ -53,7 +53,10 @@ pub fn render_index(base: &str, start: &str, end: &str, costs: &[CostByModel]) -
         ],
         nav_links: vec![NavLink::back()],
         info_rows: vec![
-            InfoRow::new("Date Range", &format!("{} to {}", start, end)),
+            InfoRow::raw(
+                "Date Range",
+                date_range_form(&make_path(base, "/models"), start, end),
+            ),
             InfoRow::new("Total Cost", &format!("{:.2} {}", total, currency)),
         ],
         content,
@@ -88,7 +91,7 @@ pub fn render_detail(
             })
         } else {
             Either::Right(view! {
-                <table>
+                <table class="data-table" data-export-name="cost_by_user">
                     <tr>
                         <th>"User"</th>
                         <th>"Cost"</th>
@@ -119,7 +122,14 @@ pub fn render_detail(
         ],
         nav_links: vec![NavLink::back()],
         info_rows: vec![
-            InfoRow::new("Date Range", &format!("{} to {}", start, end)),
+            InfoRow::raw(
+                "Date Range",
+                date_range_form(
+                    &make_path(base, &format!("/models/{}", model_id)),
+                    start,
+                    end,
+                ),
+            ),
             InfoRow::new("Model ID", model_id),
             InfoRow::new("Model Name", model_name.unwrap_or("unknown")),
             InfoRow::new("Total Cost", &format!("{:.2} {}", total, currency)),

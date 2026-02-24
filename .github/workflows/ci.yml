@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+    branches: master
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix-build -A default
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          docker load < result
+          docker tag cost-explorer:latest ghcr.io/llm-proxy-rs/cost-explorer:latest
+          docker push ghcr.io/llm-proxy-rs/cost-explorer:latest
+
+  build-admin:
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix-build -A admin
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          docker load < result
+          docker tag cost-explorer-admin:latest ghcr.io/llm-proxy-rs/cost-explorer-admin:latest
+          docker push ghcr.io/llm-proxy-rs/cost-explorer-admin:latest

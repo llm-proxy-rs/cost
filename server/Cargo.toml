@@ -29,6 +29,9 @@ time = "0.3.47"
 tower-sessions = "0.15.0"
 tower-sessions-sqlx-store = { git = "https://github.com/llm-proxy-rs/tower-sessions-stores.git", version = "0.15.0", features = ["postgres"] }
 
+[features]
+admin = []
+
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
 http-body-util = "0.1.3"

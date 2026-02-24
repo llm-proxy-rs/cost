@@ -25,6 +25,7 @@ pub trait CostService: Send + Sync {
     async fn get_model_name(&self, model_id: &str) -> Option<String>;
     async fn list_users(&self) -> Vec<(String, String)>;
     async fn list_models(&self) -> Vec<(String, String)>;
+    async fn get_user_id_by_email(&self, email: &str) -> Option<String>;
 }
 
 pub struct RealCostService {
@@ -116,5 +117,11 @@ impl CostService for RealCostService {
             .into_iter()
             .map(|(id, name)| (id.to_string(), name))
             .collect()
+    }
+
+    async fn get_user_id_by_email(&self, email: &str) -> Option<String> {
+        db::get_user_id_by_email(&self.pool, email)
+            .await
+            .map(|uuid| uuid.to_string())
     }
 }

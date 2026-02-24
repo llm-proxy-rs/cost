@@ -1,4 +1,6 @@
 use axum::extract::{Path, Query, State};
+#[cfg(not(feature = "admin"))]
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
@@ -54,6 +56,11 @@ async fn require_login(session: &Session) -> Result<String, Response> {
     }
 }
 
+#[cfg(not(feature = "admin"))]
+async fn resolve_current_user_id(service: &dyn CostService, email: &str) -> Option<String> {
+    service.get_user_id_by_email(email).await
+}
+
 pub async fn home(
     session: Session,
     State(state): State<AppState>,
@@ -66,26 +73,59 @@ pub async fn home(
 
     let (start, end) = resolve_date_range(&params);
 
-    let daily_cost = state.service.get_daily_cost(&start, &end).await;
-    let total: f64 = daily_cost.iter().map(|r| r.amount).sum();
-    let currency = daily_cost
-        .first()
-        .map(|r| r.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+    #[cfg(feature = "admin")]
+    {
+        let daily_cost = state.service.get_daily_cost(&start, &end).await;
+        let total: f64 = daily_cost.iter().map(|r| r.amount).sum();
+        let currency = daily_cost
+            .first()
+            .map(|r| r.currency.clone())
+            .unwrap_or_else(|| "USD".to_string());
 
-    let users = state.service.list_users().await;
-    let models = state.service.list_models().await;
+        let users = state.service.list_users().await;
+        let models = state.service.list_models().await;
 
-    Html(pages::home::render(
-        &state.base_path,
-        &start,
-        &end,
-        total,
-        &currency,
-        users.len(),
-        models.len(),
-    ))
-    .into_response()
+        Html(pages::home::render(
+            &state.base_path,
+            &start,
+            &end,
+            total,
+            &currency,
+            users.len(),
+            models.len(),
+        ))
+        .into_response()
+    }
+
+    #[cfg(not(feature = "admin"))]
+    {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        let (total, currency, model_count) = if let Some(ref uid) = current_user_id {
+            let costs = state
+                .service
+                .get_cost_by_model_for_user(&start, &end, uid)
+                .await;
+            let total: f64 = costs.iter().map(|r| r.amount).sum();
+            let currency = costs
+                .first()
+                .map(|r| r.currency.clone())
+                .unwrap_or_else(|| "USD".to_string());
+            (total, currency, costs.len())
+        } else {
+            (0.0, "USD".to_string(), 0)
+        };
+
+        Html(pages::home::render(
+            &state.base_path,
+            &start,
+            &end,
+            total,
+            &currency,
+            1,
+            model_count,
+        ))
+        .into_response()
+    }
 }
 
 pub async fn users(
@@ -100,6 +140,20 @@ pub async fn users(
 
     let (start, end) = resolve_date_range(&params);
     let costs = state.service.get_cost_by_user(&start, &end).await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if let Some(uid) = current_user_id {
+            costs
+                .into_iter()
+                .filter(|c| c.user_id == uid)
+                .collect::<Vec<_>>()
+        } else {
+            costs
+        }
+    };
+
     Html(pages::users::render_index(
         &state.base_path,
         &start,
@@ -120,7 +174,23 @@ pub async fn models(
     };
 
     let (start, end) = resolve_date_range(&params);
+
+    #[cfg(feature = "admin")]
     let costs = state.service.get_cost_by_model(&start, &end).await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if let Some(ref uid) = current_user_id {
+            state
+                .service
+                .get_cost_by_model_for_user(&start, &end, uid)
+                .await
+        } else {
+            vec![]
+        }
+    };
+
     Html(pages::models::render_index(
         &state.base_path,
         &start,
@@ -140,6 +210,14 @@ pub async fn user_detail(
         Ok(email) => email,
         Err(redirect) => return redirect,
     };
+
+    #[cfg(not(feature = "admin"))]
+    {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if current_user_id.as_deref() != Some(user_id.as_str()) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
 
     let (start, end) = resolve_date_range(&params);
     let user_email = state.service.get_user_email(&user_id).await;
@@ -175,6 +253,20 @@ pub async fn model_detail(
         .service
         .get_cost_by_user_for_model(&start, &end, &model_id)
         .await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if let Some(uid) = current_user_id {
+            costs
+                .into_iter()
+                .filter(|c| c.user_id == uid)
+                .collect::<Vec<_>>()
+        } else {
+            costs
+        }
+    };
+
     Html(pages::models::render_detail(
         &state.base_path,
         &start,

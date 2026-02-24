@@ -20,6 +20,15 @@ pub async fn get_user_email(pool: &PgPool, user_id: Uuid) -> Option<String> {
         .flatten()
 }
 
+pub async fn get_user_id_by_email(pool: &PgPool, email: &str) -> Option<Uuid> {
+    sqlx::query_scalar::<_, Uuid>("select user_id from users where user_email = $1")
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
 pub async fn get_model_name(pool: &PgPool, model_id: Uuid) -> Option<String> {
     sqlx::query_scalar::<_, String>("select model_name from models where model_id = $1::uuid")
         .bind(model_id.to_string().to_lowercase())

@@ -8,6 +8,39 @@ pub fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+pub fn date_range_form(action: &str, start: &str, end: &str) -> String {
+    format!(
+        r#"<form method="GET" action="{action}" style="display:inline-flex;gap:8px;align-items:center">
+<select onchange="(function(sel){{
+  var f=sel.form,s=f.start,e=f.end,v=sel.value;
+  if(v==='custom')return;
+  var now=new Date(),y=now.getFullYear(),m=now.getMonth(),d=now.getDate();
+  function fmt(dt){{var mm=''+(dt.getMonth()+1),dd=''+dt.getDate();if(mm.length<2)mm='0'+mm;if(dd.length<2)dd='0'+dd;return dt.getFullYear()+'-'+mm+'-'+dd;}}
+  var sd,ed=fmt(now);
+  if(v==='7d'){{sd=fmt(new Date(y,m,d-6));}}
+  else if(v==='30d'){{sd=fmt(new Date(y,m,d-29));}}
+  else if(v==='cm'){{sd=fmt(new Date(y,m,1));}}
+  else if(v==='lm'){{sd=fmt(new Date(y,m-1,1));ed=fmt(new Date(y,m,0));}}
+  else if(v==='3m'){{sd=fmt(new Date(y,m-2,1));}}
+  s.value=sd;e.value=ed;
+}})(this)">
+<option value="custom">Custom</option>
+<option value="7d">Past 7 days</option>
+<option value="30d">Past 30 days</option>
+<option value="cm">Current month</option>
+<option value="lm">Last month</option>
+<option value="3m">Last 3 months</option>
+</select>
+<label>Start <input type="date" name="start" value="{start}"></label>
+<label>End <input type="date" name="end" value="{end}"></label>
+<button type="submit">Apply</button>
+</form>"#,
+        action = html_escape(action),
+        start = html_escape(start),
+        end = html_escape(end),
+    )
+}
+
 const COLLAPSE_THRESHOLD: usize = 200;
 
 pub fn collapsible_block(content: &str, css_class: &str) -> String {
@@ -39,7 +72,10 @@ pub fn page_layout(title: &str, body_html: String) -> String {
 <style>
 body {{ font-family: monospace; padding: 16px; }}
 table {{ width: 100%; border-collapse: collapse; }}
-th {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; }}
+th {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; cursor: pointer; user-select: none; }}
+th:after {{ content: ' \2195 '; color: #ccc; }}
+th.sort-asc:after {{ content: ' \25B2 '; color: #333; }}
+th.sort-desc:after {{ content: ' \25BC '; color: #333; }}
 td {{ padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }}
 tr:last-child td {{ border-bottom: none; }}
 pre {{ white-space: pre-wrap; }}
@@ -55,10 +91,60 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
 .hidden {{ display: none; }}
 .filtered-row {{ opacity: 0.45; }}
 .filtered-badge {{ color: #888; font-weight: bold; font-size: 0.85em; }}
+.export-csv-btn {{ margin-bottom: 8px; cursor: pointer; font-family: monospace; padding: 4px 12px; }}
 </style>
 </head>
 <body>
 {body_html}
+<script>
+(function(){{
+  document.querySelectorAll('th').forEach(function(th){{
+    th.addEventListener('click',function(){{
+      var table=th.closest('table'),idx=Array.prototype.indexOf.call(th.parentNode.children,th);
+      var rows=Array.from(table.querySelectorAll('tr')).slice(1);
+      if(!rows.length)return;
+      var asc=!th.classList.contains('sort-asc');
+      table.querySelectorAll('th').forEach(function(h){{h.classList.remove('sort-asc','sort-desc');}});
+      th.classList.add(asc?'sort-asc':'sort-desc');
+      rows.sort(function(a,b){{
+        var at=(a.children[idx]||{{}}).textContent||'';
+        var bt=(b.children[idx]||{{}}).textContent||'';
+        var an=parseFloat(at),bn=parseFloat(bt);
+        var r=(!isNaN(an)&&!isNaN(bn))?an-bn:at.localeCompare(bt);
+        return asc?r:-r;
+      }});
+      rows.forEach(function(r){{table.appendChild(r);}});
+    }});
+  }});
+}})();
+(function(){{
+  function exportCsv(table){{
+    var name=table.getAttribute('data-export-name')||'cost_export';
+    var rows=Array.from(table.querySelectorAll('tr'));
+    var csv=rows.map(function(row){{
+      return Array.from(row.querySelectorAll('th,td')).map(function(cell){{
+        var text=(cell.textContent||'').replace(/"/g,'""');
+        return '"'+text+'"';
+      }}).join(',');
+    }}).join('\n');
+    var blob=new Blob([csv],{{type:'text/csv;charset=utf-8;'}});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    var s=document.querySelector('input[name="start"]');
+    var e=document.querySelector('input[name="end"]');
+    var fname=name+(s&&s.value?'_'+s.value:'')+(e&&e.value?'_'+e.value:'')+'.csv';
+    a.href=url;a.download=fname;a.style.display='none';
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+  }}
+  document.querySelectorAll('table.data-table').forEach(function(table){{
+    var btn=document.createElement('button');
+    btn.textContent='Export CSV';btn.className='export-csv-btn';
+    btn.addEventListener('click',function(){{exportCsv(table);}});
+    table.parentNode.insertBefore(btn,table);
+  }});
+}})();
+</script>
 </body>
 </html>"#,
         title = html_escape(title),
