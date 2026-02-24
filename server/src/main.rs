@@ -86,7 +86,6 @@ async fn main() -> anyhow::Result<()> {
     let ce_client = ce::new_client().await;
 
     let session_store = PostgresStore::new(pool.clone());
-    session_store.migrate().await?;
 
     let deletion_task = tokio::task::spawn(
         session_store
