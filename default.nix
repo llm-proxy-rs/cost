@@ -29,20 +29,20 @@
     };
 
   package = mkPackage {
-    pname = "cost-explorer";
+    pname = "cost";
   };
 
   adminPackage = mkPackage {
-    pname = "cost-explorer-admin";
+    pname = "cost-admin";
     cargoFlags = ["--features" "admin"];
   };
 in {
   default = mkImage {
-    name = "cost-explorer";
+    name = "cost";
     package = package;
   };
   admin = mkImage {
-    name = "cost-explorer-admin";
+    name = "cost-admin";
     package = adminPackage;
   };
 }

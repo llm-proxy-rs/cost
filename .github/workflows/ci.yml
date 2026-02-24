@@ -22,8 +22,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           docker load < result
-          docker tag cost-explorer:latest ghcr.io/llm-proxy-rs/cost-explorer:latest
-          docker push ghcr.io/llm-proxy-rs/cost-explorer:latest
+          docker tag cost:latest ghcr.io/llm-proxy-rs/cost:latest
+          docker push ghcr.io/llm-proxy-rs/cost:latest
 
   build-admin:
     permissions:
@@ -44,5 +44,5 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           docker load < result
-          docker tag cost-explorer-admin:latest ghcr.io/llm-proxy-rs/cost-explorer-admin:latest
-          docker push ghcr.io/llm-proxy-rs/cost-explorer-admin:latest
+          docker tag cost-admin:latest ghcr.io/llm-proxy-rs/cost-admin:latest
+          docker push ghcr.io/llm-proxy-rs/cost-admin:latest
