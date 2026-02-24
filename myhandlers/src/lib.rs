@@ -4,8 +4,6 @@ use axum::{
 };
 use handlers::CallbackQuery;
 use myerrors::AppError;
-use sqlx::PgPool;
-use std::sync::Arc;
 use tower_sessions::Session;
 
 #[derive(Clone)]
@@ -16,7 +14,6 @@ pub struct AppState {
     pub cognito_redirect_uri: String,
     pub cognito_region: String,
     pub cognito_user_pool_id: String,
-    pub db_pool: Arc<PgPool>,
 }
 
 pub async fn logout(session: Session) -> Result<Response, AppError> {

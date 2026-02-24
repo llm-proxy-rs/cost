@@ -9,8 +9,10 @@ pub struct AppConfig {
     pub cognito_redirect_uri: String,
     pub cognito_region: String,
     pub cognito_user_pool_id: String,
-    #[serde(default = "default_database_url")]
-    pub database_url: String,
+    #[serde(default = "default_database_url_gateway_ro")]
+    pub database_url_gateway_ro: String,
+    #[serde(default = "default_database_url_cost")]
+    pub database_url_cost: String,
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
@@ -27,8 +29,12 @@ fn default_port() -> u16 {
     8080
 }
 
-fn default_database_url() -> String {
+fn default_database_url_gateway_ro() -> String {
     "postgres://postgres:postgres@localhost/gateway".to_string()
+}
+
+fn default_database_url_cost() -> String {
+    "postgres://postgres:postgres@localhost/cost".to_string()
 }
 
 fn default_base_path() -> String {

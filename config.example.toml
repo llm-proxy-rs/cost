@@ -4,7 +4,8 @@ port = 8080
 base_path = "/"
 
 # Database Configuration
-database_url = "postgres://postgres:postgres@localhost/gateway"
+database_url_gateway_ro = "postgres://postgres:postgres@localhost/gateway"
+database_url_cost = "postgres://postgres:postgres@localhost/cost"
 
 # AWS Cognito Configuration
 cognito_client_id = "your_cognito_client_id"

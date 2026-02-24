@@ -152,6 +152,32 @@ pub async fn get_daily_cost(client: &Client, start: &str, end: &str) -> Result<V
     Ok(records)
 }
 
+pub async fn get_monthly_cost(client: &Client, start: &str, end: &str) -> Result<Vec<CostRecord>> {
+    let resp = client
+        .get_cost_and_usage()
+        .time_period(DateInterval::builder().start(start).end(end).build()?)
+        .granularity(Granularity::Monthly)
+        .metrics("BlendedCost")
+        .filter(negate_filter("GatewayUserId"))
+        .send()
+        .await?;
+
+    let mut records = Vec::new();
+    for result_by_time in resp.results_by_time() {
+        let date = result_by_time
+            .time_period()
+            .map(|tp| tp.start().to_string())
+            .unwrap_or_default();
+        let (amount, currency) = extract_blended_cost_from_total(result_by_time.total());
+        records.push(CostRecord {
+            date,
+            amount,
+            currency,
+        });
+    }
+    Ok(records)
+}
+
 pub async fn get_cost_by_model_for_user(
     client: &Client,
     start: &str,
@@ -276,6 +302,170 @@ pub async fn get_cost_by_user_for_model(
             currency,
         })
         .collect())
+}
+
+pub async fn get_daily_cost_for_user(
+    client: &Client,
+    start: &str,
+    end: &str,
+    user_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let user_filter = Expression::builder()
+        .tags(
+            TagValues::builder()
+                .key("GatewayUserId")
+                .values(user_id)
+                .match_options(aws_sdk_costexplorer::types::MatchOption::Equals)
+                .build(),
+        )
+        .build();
+
+    let resp = client
+        .get_cost_and_usage()
+        .time_period(DateInterval::builder().start(start).end(end).build()?)
+        .granularity(Granularity::Daily)
+        .metrics("BlendedCost")
+        .filter(user_filter)
+        .send()
+        .await?;
+
+    let mut records = Vec::new();
+    for result_by_time in resp.results_by_time() {
+        let date = result_by_time
+            .time_period()
+            .map(|tp| tp.start().to_string())
+            .unwrap_or_default();
+        let (amount, currency) = extract_blended_cost_from_total(result_by_time.total());
+        records.push(CostRecord {
+            date,
+            amount,
+            currency,
+        });
+    }
+    Ok(records)
+}
+
+pub async fn get_monthly_cost_for_user(
+    client: &Client,
+    start: &str,
+    end: &str,
+    user_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let user_filter = Expression::builder()
+        .tags(
+            TagValues::builder()
+                .key("GatewayUserId")
+                .values(user_id)
+                .match_options(aws_sdk_costexplorer::types::MatchOption::Equals)
+                .build(),
+        )
+        .build();
+
+    let resp = client
+        .get_cost_and_usage()
+        .time_period(DateInterval::builder().start(start).end(end).build()?)
+        .granularity(Granularity::Monthly)
+        .metrics("BlendedCost")
+        .filter(user_filter)
+        .send()
+        .await?;
+
+    let mut records = Vec::new();
+    for result_by_time in resp.results_by_time() {
+        let date = result_by_time
+            .time_period()
+            .map(|tp| tp.start().to_string())
+            .unwrap_or_default();
+        let (amount, currency) = extract_blended_cost_from_total(result_by_time.total());
+        records.push(CostRecord {
+            date,
+            amount,
+            currency,
+        });
+    }
+    Ok(records)
+}
+
+pub async fn get_daily_cost_for_model(
+    client: &Client,
+    start: &str,
+    end: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let model_filter = Expression::builder()
+        .tags(
+            TagValues::builder()
+                .key("GatewayModelId")
+                .values(model_id)
+                .match_options(aws_sdk_costexplorer::types::MatchOption::Equals)
+                .build(),
+        )
+        .build();
+
+    let resp = client
+        .get_cost_and_usage()
+        .time_period(DateInterval::builder().start(start).end(end).build()?)
+        .granularity(Granularity::Daily)
+        .metrics("BlendedCost")
+        .filter(model_filter)
+        .send()
+        .await?;
+
+    let mut records = Vec::new();
+    for result_by_time in resp.results_by_time() {
+        let date = result_by_time
+            .time_period()
+            .map(|tp| tp.start().to_string())
+            .unwrap_or_default();
+        let (amount, currency) = extract_blended_cost_from_total(result_by_time.total());
+        records.push(CostRecord {
+            date,
+            amount,
+            currency,
+        });
+    }
+    Ok(records)
+}
+
+pub async fn get_monthly_cost_for_model(
+    client: &Client,
+    start: &str,
+    end: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let model_filter = Expression::builder()
+        .tags(
+            TagValues::builder()
+                .key("GatewayModelId")
+                .values(model_id)
+                .match_options(aws_sdk_costexplorer::types::MatchOption::Equals)
+                .build(),
+        )
+        .build();
+
+    let resp = client
+        .get_cost_and_usage()
+        .time_period(DateInterval::builder().start(start).end(end).build()?)
+        .granularity(Granularity::Monthly)
+        .metrics("BlendedCost")
+        .filter(model_filter)
+        .send()
+        .await?;
+
+    let mut records = Vec::new();
+    for result_by_time in resp.results_by_time() {
+        let date = result_by_time
+            .time_period()
+            .map(|tp| tp.start().to_string())
+            .unwrap_or_default();
+        let (amount, currency) = extract_blended_cost_from_total(result_by_time.total());
+        records.push(CostRecord {
+            date,
+            amount,
+            currency,
+        });
+    }
+    Ok(records)
 }
 
 fn extract_blended_cost(

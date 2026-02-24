@@ -1,30 +1,48 @@
-use super::make_path;
-use templates::{date_range_form, Breadcrumb, InfoRow, Page, Subpage};
+use super::{make_path, with_period};
+use templates::{period_links, Breadcrumb, InfoRow, Page, Subpage};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render(
     base: &str,
-    start: &str,
-    end: &str,
+    period: &str,
     total_cost: f64,
     currency: &str,
+    cost_count: usize,
+    monthly_count: usize,
     user_count: usize,
     model_count: usize,
 ) -> String {
     Page {
         title: "Cost Explorer - Home".to_string(),
         breadcrumbs: vec![Breadcrumb::current("Cost Explorer")],
+        nav_links: vec![],
         info_rows: vec![
-            InfoRow::raw(
-                "Date Range",
-                date_range_form(&make_path(base, ""), start, end),
-            ),
+            InfoRow::raw("Period", period_links(&make_path(base, ""), period)),
             InfoRow::new("Total Cost", &format!("{:.2} {}", total_cost, currency)),
         ],
+        content: (),
         subpages: vec![
-            Subpage::new("Users", make_path(base, "/users"), user_count),
-            Subpage::new("Models", make_path(base, "/models"), model_count),
+            Subpage::new(
+                "Daily Cost",
+                with_period(&make_path(base, "/costs/daily"), period),
+                cost_count,
+            ),
+            Subpage::new(
+                "Monthly Cost",
+                with_period(&make_path(base, "/costs/monthly"), period),
+                monthly_count,
+            ),
+            Subpage::new(
+                "Users",
+                with_period(&make_path(base, "/users"), period),
+                user_count,
+            ),
+            Subpage::new(
+                "Models",
+                with_period(&make_path(base, "/models"), period),
+                model_count,
+            ),
         ],
-        ..Default::default()
     }
     .render()
 }
@@ -35,44 +53,48 @@ mod tests {
 
     #[test]
     fn render_contains_title() {
-        let html = render("/", "2024-01-01", "2024-01-31", 123.45, "USD", 5, 3);
+        let html = render("/", "30d", 123.45, "USD", 1, 6, 5, 3);
         assert!(html.contains("<title>Cost Explorer - Home</title>"));
     }
 
     #[test]
-    fn render_contains_date_range() {
-        let html = render("/", "2024-01-01", "2024-01-31", 0.0, "USD", 0, 0);
-        assert!(html.contains(r#"value="2024-01-01"#));
-        assert!(html.contains(r#"value="2024-01-31"#));
-        assert!(html.contains(r#"type="date""#));
-        assert!(html.contains("Apply"));
+    fn render_contains_period_links() {
+        let html = render("/", "30d", 0.0, "USD", 0, 0, 0, 0);
+        assert!(html.contains("<b>Past 30 Days</b>"));
+        assert!(html.contains("?period=7d"));
     }
 
     #[test]
     fn render_contains_total_cost() {
-        let html = render("/", "2024-01-01", "2024-01-31", 99.99, "USD", 0, 0);
+        let html = render("/", "30d", 99.99, "USD", 0, 0, 0, 0);
         assert!(html.contains("99.99 USD"));
     }
 
     #[test]
     fn render_contains_subpage_links() {
-        let html = render("/", "2024-01-01", "2024-01-31", 0.0, "USD", 5, 3);
+        let html = render("/", "30d", 0.0, "USD", 0, 0, 5, 3);
+        assert!(html.contains("/costs/daily"));
+        assert!(html.contains("/costs/monthly"));
         assert!(html.contains("/users"));
         assert!(html.contains("/models"));
+        assert!(html.contains("Daily Cost"));
+        assert!(html.contains("Monthly Cost"));
         assert!(html.contains("Users"));
         assert!(html.contains("Models"));
     }
 
     #[test]
     fn render_contains_counts() {
-        let html = render("/", "2024-01-01", "2024-01-31", 0.0, "USD", 12, 7);
+        let html = render("/", "30d", 0.0, "USD", 2, 6, 12, 7);
         assert!(html.contains("12"));
         assert!(html.contains("7"));
     }
 
     #[test]
     fn render_uses_custom_base_path() {
-        let html = render("/_dashboard", "2024-01-01", "2024-01-31", 0.0, "USD", 1, 1);
+        let html = render("/_dashboard", "30d", 0.0, "USD", 0, 0, 1, 1);
+        assert!(html.contains("/_dashboard/costs/daily"));
+        assert!(html.contains("/_dashboard/costs/monthly"));
         assert!(html.contains("/_dashboard/users"));
         assert!(html.contains("/_dashboard/models"));
     }

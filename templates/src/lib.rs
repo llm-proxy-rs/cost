@@ -8,36 +8,66 @@ pub fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-pub fn date_range_form(action: &str, start: &str, end: &str) -> String {
+pub fn period_links(path: &str, active: &str) -> String {
+    let periods = [
+        ("7d", "Past 7 Days"),
+        ("30d", "Past 30 Days"),
+        ("month", "This Month"),
+        ("last_month", "Last Month"),
+        ("3m", "Last 3 Months"),
+        ("6m", "Last 6 Months"),
+        ("12m", "Last 12 Months"),
+    ];
+    let parts: Vec<String> = periods
+        .iter()
+        .map(|(key, label)| {
+            if *key == active {
+                format!("<b>{}</b>", html_escape(label))
+            } else {
+                let sep = if path.contains('?') { "&" } else { "?" };
+                format!(
+                    r#"<a href="{}{}period={}">{}</a>"#,
+                    html_escape(path),
+                    sep,
+                    html_escape(key),
+                    html_escape(label)
+                )
+            }
+        })
+        .collect();
+    parts.join(" | ")
+}
+
+pub fn pagination_nav(path: &str, page: usize, total: usize, page_size: usize) -> String {
+    if total <= page_size {
+        return String::new();
+    }
+    let total_pages = total.div_ceil(page_size);
+    let page = page.clamp(1, total_pages);
+    let sep = if path.contains('?') { "&amp;" } else { "?" };
+    let prev = if page > 1 {
+        format!(
+            r#"<a href="{}{}page={}">Prev</a>"#,
+            html_escape(path),
+            sep,
+            page - 1
+        )
+    } else {
+        "Prev".to_string()
+    };
+    let next = if page < total_pages {
+        format!(
+            r#"<a href="{}{}page={}">Next</a>"#,
+            html_escape(path),
+            sep,
+            page + 1
+        )
+    } else {
+        "Next".to_string()
+    };
     format!(
-        r#"<form method="GET" action="{action}" style="display:inline-flex;gap:8px;align-items:center">
-<select onchange="(function(sel){{
-  var f=sel.form,s=f.start,e=f.end,v=sel.value;
-  if(v==='custom')return;
-  var now=new Date(),y=now.getFullYear(),m=now.getMonth(),d=now.getDate();
-  function fmt(dt){{var mm=''+(dt.getMonth()+1),dd=''+dt.getDate();if(mm.length<2)mm='0'+mm;if(dd.length<2)dd='0'+dd;return dt.getFullYear()+'-'+mm+'-'+dd;}}
-  var sd,ed=fmt(now);
-  if(v==='7d'){{sd=fmt(new Date(y,m,d-6));}}
-  else if(v==='30d'){{sd=fmt(new Date(y,m,d-29));}}
-  else if(v==='cm'){{sd=fmt(new Date(y,m,1));}}
-  else if(v==='lm'){{sd=fmt(new Date(y,m-1,1));ed=fmt(new Date(y,m,0));}}
-  else if(v==='3m'){{sd=fmt(new Date(y,m-2,1));}}
-  s.value=sd;e.value=ed;
-}})(this)">
-<option value="custom">Custom</option>
-<option value="7d">Past 7 days</option>
-<option value="30d">Past 30 days</option>
-<option value="cm">Current month</option>
-<option value="lm">Last month</option>
-<option value="3m">Last 3 months</option>
-</select>
-<label>Start <input type="date" name="start" value="{start}"></label>
-<label>End <input type="date" name="end" value="{end}"></label>
-<button type="submit">Apply</button>
-</form>"#,
-        action = html_escape(action),
-        start = html_escape(start),
-        end = html_escape(end),
+        "{} | Page {} of {} ({} items) | {}",
+        prev, page, total_pages, total, next
     )
 }
 
@@ -130,9 +160,9 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
     var blob=new Blob([csv],{{type:'text/csv;charset=utf-8;'}});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
-    var s=document.querySelector('input[name="start"]');
-    var e=document.querySelector('input[name="end"]');
-    var fname=name+(s&&s.value?'_'+s.value:'')+(e&&e.value?'_'+e.value:'')+'.csv';
+    var ds=table.getAttribute('data-start')||'';
+    var de=table.getAttribute('data-end')||'';
+    var fname=name+(ds?'_'+ds:'')+(de?'_'+de:'')+'.csv';
     a.href=url;a.download=fname;a.style.display='none';
     document.body.appendChild(a);a.click();
     document.body.removeChild(a);URL.revokeObjectURL(url);
@@ -386,6 +416,28 @@ line2</pre>"#
     fn page_layout_escapes_title() {
         let result = page_layout("<script>", "".to_string());
         assert!(result.contains("<title>&lt;script&gt;</title>"));
+    }
+
+    #[test]
+    fn period_links_renders_active_bold() {
+        let html = period_links("/users", "30d");
+        assert!(html.contains("<b>Past 30 Days</b>"));
+        assert!(!html.contains(r#"?period=30d"#));
+    }
+
+    #[test]
+    fn period_links_renders_inactive_as_links() {
+        let html = period_links("/users", "30d");
+        assert!(html.contains(r#"<a href="/users?period=7d">Past 7 Days</a>"#));
+        assert!(html.contains(r#"<a href="/users?period=month">This Month</a>"#));
+        assert!(html.contains(r#"<a href="/users?period=last_month">Last Month</a>"#));
+        assert!(html.contains(r#"<a href="/users?period=3m">Last 3 Months</a>"#));
+    }
+
+    #[test]
+    fn period_links_separates_with_pipe() {
+        let html = period_links("/", "7d");
+        assert!(html.contains(" | "));
     }
 
     #[test]

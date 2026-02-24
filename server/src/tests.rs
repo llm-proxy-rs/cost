@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use axum::body::Body;
-use common::{CostByModel, CostByUser, CostRecord};
+use common::{CostByModel, CostByUser, CostRecord, ModelInfo, UserInfo};
 use http_body_util::BodyExt;
-use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower::ServiceExt;
 use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
@@ -47,6 +46,14 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
+    async fn get_monthly_cost(&self, _start: &str, _end: &str) -> Vec<CostRecord> {
+        vec![CostRecord {
+            date: "2024-01-01".to_string(),
+            amount: 500.0,
+            currency: "USD".to_string(),
+        }]
+    }
+
     async fn get_cost_by_user(&self, _start: &str, _end: &str) -> Vec<CostByUser> {
         self.users.clone()
     }
@@ -73,6 +80,42 @@ impl CostService for MockCostService {
         self.users.clone()
     }
 
+    async fn get_daily_cost_for_user(
+        &self,
+        _start: &str,
+        _end: &str,
+        _user_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
+    async fn get_monthly_cost_for_user(
+        &self,
+        _start: &str,
+        _end: &str,
+        _user_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
+    async fn get_daily_cost_for_model(
+        &self,
+        _start: &str,
+        _end: &str,
+        _model_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
+    async fn get_monthly_cost_for_model(
+        &self,
+        _start: &str,
+        _end: &str,
+        _model_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
     async fn get_user_email(&self, _user_id: &str) -> Option<String> {
         Some("alice@example.com".to_string())
     }
@@ -92,12 +135,51 @@ impl CostService for MockCostService {
     async fn get_user_id_by_email(&self, _email: &str) -> Option<String> {
         Some("aaaa-bbbb".to_string())
     }
+
+    async fn list_users_enriched(&self) -> Vec<UserInfo> {
+        vec![UserInfo {
+            user_id: "aaaa-bbbb".to_string(),
+            user_email: "alice@example.com".to_string(),
+            created_at: "2024-01-01".to_string(),
+            api_key_count: 2,
+            active_api_key_count: 1,
+            inference_profile_count: 3,
+        }]
+    }
+
+    async fn get_user_info(&self, _user_id: &str) -> Option<UserInfo> {
+        Some(UserInfo {
+            user_id: "aaaa-bbbb".to_string(),
+            user_email: "alice@example.com".to_string(),
+            created_at: "2024-01-01".to_string(),
+            api_key_count: 2,
+            active_api_key_count: 1,
+            inference_profile_count: 3,
+        })
+    }
+
+    async fn list_models_enriched(&self) -> Vec<ModelInfo> {
+        vec![ModelInfo {
+            model_id: "cccc-dddd".to_string(),
+            model_name: "claude-3-sonnet".to_string(),
+            is_disabled: false,
+            protected: false,
+            user_count: 1,
+        }]
+    }
+
+    async fn get_model_info(&self, _model_id: &str) -> Option<ModelInfo> {
+        Some(ModelInfo {
+            model_id: "cccc-dddd".to_string(),
+            model_name: "claude-3-sonnet".to_string(),
+            is_disabled: false,
+            protected: false,
+            user_count: 1,
+        })
+    }
 }
 
 fn mock_state(base: &str) -> AppState {
-    let pool = PgPoolOptions::new()
-        .connect_lazy("postgres://localhost/test")
-        .unwrap();
     AppState {
         service: Arc::new(MockCostService::new()),
         base_path: base.to_string(),
@@ -107,7 +189,6 @@ fn mock_state(base: &str) -> AppState {
         cognito_redirect_uri: String::new(),
         cognito_region: String::new(),
         cognito_user_pool_id: String::new(),
-        db_pool: Arc::new(pool),
     }
 }
 
@@ -148,6 +229,12 @@ async fn unauthenticated_home_redirects_to_login() {
 }
 
 #[tokio::test]
+async fn unauthenticated_daily_costs_redirects_to_login() {
+    let (status, _) = get("/costs/daily").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
 async fn unauthenticated_users_redirects_to_login() {
     let (status, _) = get("/users").await;
     assert!(status == 303 || status == 302 || status == 307);
@@ -156,6 +243,110 @@ async fn unauthenticated_users_redirects_to_login() {
 #[tokio::test]
 async fn unauthenticated_models_redirects_to_login() {
     let (status, _) = get("/models").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_user_detail_redirects_to_login() {
+    let (status, _) = get("/users/aaaa-bbbb").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_model_detail_redirects_to_login() {
+    let (status, _) = get("/models/cccc-dddd").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_user_daily_costs_redirects_to_login() {
+    let (status, _) = get("/users/aaaa-bbbb/daily").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_user_monthly_costs_redirects_to_login() {
+    let (status, _) = get("/users/aaaa-bbbb/monthly").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_model_daily_costs_redirects_to_login() {
+    let (status, _) = get("/models/cccc-dddd/daily").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_model_monthly_costs_redirects_to_login() {
+    let (status, _) = get("/models/cccc-dddd/monthly").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+// Daily cost drill-down redirects
+#[tokio::test]
+async fn unauthenticated_cost_date_detail_redirects_to_login() {
+    let (status, _) = get("/costs/daily/2024-01-15").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_date_users_redirects_to_login() {
+    let (status, _) = get("/costs/daily/2024-01-15/users").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_date_models_redirects_to_login() {
+    let (status, _) = get("/costs/daily/2024-01-15/models").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_date_user_models_redirects_to_login() {
+    let (status, _) = get("/costs/daily/2024-01-15/users/aaaa-bbbb").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_date_model_users_redirects_to_login() {
+    let (status, _) = get("/costs/daily/2024-01-15/models/cccc-dddd").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+// Monthly cost redirects
+#[tokio::test]
+async fn unauthenticated_monthly_costs_redirects_to_login() {
+    let (status, _) = get("/costs/monthly").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_month_detail_redirects_to_login() {
+    let (status, _) = get("/costs/monthly/2024-01").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_month_users_redirects_to_login() {
+    let (status, _) = get("/costs/monthly/2024-01/users").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_month_models_redirects_to_login() {
+    let (status, _) = get("/costs/monthly/2024-01/models").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_month_user_models_redirects_to_login() {
+    let (status, _) = get("/costs/monthly/2024-01/users/aaaa-bbbb").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_cost_month_model_users_redirects_to_login() {
+    let (status, _) = get("/costs/monthly/2024-01/models/cccc-dddd").await;
     assert!(status == 303 || status == 302 || status == 307);
 }
 
@@ -176,5 +367,26 @@ async fn nested_base_path_redirects_to_login() {
 async fn nested_base_path_users_redirects() {
     let app = test_app_with_base("/_dashboard");
     let (status, _) = get_from(app, "/_dashboard/users").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn nested_base_path_new_routes_redirect() {
+    let app = test_app_with_base("/_dashboard");
+    let (status, _) = get_from(app, "/_dashboard/users/aaaa-bbbb/daily").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn nested_base_path_daily_costs_redirect() {
+    let app = test_app_with_base("/_dashboard");
+    let (status, _) = get_from(app, "/_dashboard/costs/daily").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn nested_base_path_monthly_costs_redirect() {
+    let app = test_app_with_base("/_dashboard");
+    let (status, _) = get_from(app, "/_dashboard/costs/monthly").await;
     assert!(status == 303 || status == 302 || status == 307);
 }
