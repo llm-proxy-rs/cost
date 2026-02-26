@@ -133,7 +133,12 @@ impl CostService for RealCostService {
         let client = self.ce_client.clone();
         self.cached_query("daily", "", start, end, |s, e| {
             let client = client.clone();
-            Box::pin(async move { ce::get_daily_cost(&client, s, e).await.unwrap_or_default() })
+            Box::pin(async move {
+                ce::get_daily_cost(&client, s, e).await.unwrap_or_else(|e| {
+                    log::error!("Failed to call CE API (get_daily_cost): {e}");
+                    Vec::new()
+                })
+            })
         })
         .await
     }
@@ -145,7 +150,10 @@ impl CostService for RealCostService {
             Box::pin(async move {
                 ce::get_monthly_cost(&client, s, e)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to call CE API (get_monthly_cost): {e}");
+                        Vec::new()
+                    })
             })
         })
         .await
@@ -154,7 +162,10 @@ impl CostService for RealCostService {
     async fn get_cost_by_user(&self, start: &str, end: &str) -> Vec<CostByUser> {
         let mut costs = ce::get_cost_by_user(&self.ce_client, start, end)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                log::error!("Failed to call CE API (get_cost_by_user): {e}");
+                Vec::new()
+            });
         for cost in &mut costs {
             cost.user_email = self.get_user_email(&cost.user_id).await;
         }
@@ -164,7 +175,10 @@ impl CostService for RealCostService {
     async fn get_cost_by_model(&self, start: &str, end: &str) -> Vec<CostByModel> {
         let mut costs = ce::get_cost_by_model(&self.ce_client, start, end)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                log::error!("Failed to call CE API (get_cost_by_model): {e}");
+                Vec::new()
+            });
         for cost in &mut costs {
             cost.model_name = self.get_model_name(&cost.model_id).await;
         }
@@ -179,7 +193,10 @@ impl CostService for RealCostService {
     ) -> Vec<CostByModel> {
         let mut costs = ce::get_cost_by_model_for_user(&self.ce_client, start, end, user_id)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                log::error!("Failed to call CE API (get_cost_by_model_for_user): {e}");
+                Vec::new()
+            });
         for cost in &mut costs {
             cost.model_name = self.get_model_name(&cost.model_id).await;
         }
@@ -194,7 +211,10 @@ impl CostService for RealCostService {
     ) -> Vec<CostByUser> {
         let mut costs = ce::get_cost_by_user_for_model(&self.ce_client, start, end, model_id)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                log::error!("Failed to call CE API (get_cost_by_user_for_model): {e}");
+                Vec::new()
+            });
         for cost in &mut costs {
             cost.user_email = self.get_user_email(&cost.user_id).await;
         }
@@ -216,7 +236,10 @@ impl CostService for RealCostService {
             Box::pin(async move {
                 ce::get_daily_cost_for_user(&client, s, e, &uid)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to call CE API (get_daily_cost_for_user): {e}");
+                        Vec::new()
+                    })
             })
         })
         .await
@@ -237,7 +260,10 @@ impl CostService for RealCostService {
             Box::pin(async move {
                 ce::get_monthly_cost_for_user(&client, s, e, &uid)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to call CE API (get_monthly_cost_for_user): {e}");
+                        Vec::new()
+                    })
             })
         })
         .await
@@ -258,7 +284,10 @@ impl CostService for RealCostService {
             Box::pin(async move {
                 ce::get_daily_cost_for_model(&client, s, e, &mid)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to call CE API (get_daily_cost_for_model): {e}");
+                        Vec::new()
+                    })
             })
         })
         .await
@@ -279,7 +308,10 @@ impl CostService for RealCostService {
             Box::pin(async move {
                 ce::get_monthly_cost_for_model(&client, s, e, &mid)
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to call CE API (get_monthly_cost_for_model): {e}");
+                        Vec::new()
+                    })
             })
         })
         .await
