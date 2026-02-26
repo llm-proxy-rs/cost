@@ -215,12 +215,10 @@ async fn main() -> anyhow::Result<()> {
     log::info!("Gateway DB pool initialized");
     let cost_pool = db::init_pool(&app_config.database_url_cost).await?;
     log::info!("Cost DB connected successfully");
-    let cache_pool = cost_pool.clone();
-    let ce_client = ce::new_client().await;
 
-    db::create_cost_cache_table(&cache_pool).await?;
+    db::create_cost_table(&cost_pool).await?;
 
-    let session_store = tower_sessions_sqlx_store::PostgresStore::new(cost_pool);
+    let session_store = tower_sessions_sqlx_store::PostgresStore::new(cost_pool.clone());
     session_store.migrate().await?;
 
     let deletion_task = tokio::task::spawn(
@@ -235,8 +233,7 @@ async fn main() -> anyhow::Result<()> {
 
     let service = RealCostService {
         pool: gateway_pool,
-        ce_client,
-        cache_pool,
+        cost_pool,
     };
     let state = AppState {
         service: Arc::new(service),

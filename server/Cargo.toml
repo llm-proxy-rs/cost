@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 db = { path = "../db" }
-ce = { path = "../ce" }
 myerrors = { path = "../myerrors" }
 myhandlers = { path = "../myhandlers" }
 templates = { path = "../templates" }
@@ -14,8 +13,6 @@ axum = "0.8.8"
 tokio = { version = "1.49.0", features = ["full"] }
 leptos = { version = "0.8.16", features = ["ssr"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "postgres", "tls-rustls"] }
-aws-config = { version = "1.8.14", features = ["behavior-version-latest"] }
-aws-sdk-costexplorer = "1.111.0"
 chrono = "0.4.44"
 serde = { version = "1.0.228", features = ["derive"] }
 clap = { version = "4.5.60", features = ["derive"] }

@@ -1,0 +1,21 @@
+[package]
+name = "batch"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "batch"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../common" }
+db = { path = "../db" }
+ce = { path = "../ce" }
+tokio = { version = "1.49.0", features = ["full"] }
+chrono = "0.4.44"
+clap = { version = "4.5.60", features = ["derive"] }
+anyhow = "1.0.102"
+env_logger = "0.11.9"
+log = "0.4.29"
+config = "0.15.19"
+serde = { version = "1.0.228", features = ["derive"] }

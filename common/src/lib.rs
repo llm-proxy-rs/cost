@@ -1,5 +1,14 @@
 use serde::Serialize;
 
+#[derive(Debug, Clone)]
+pub struct CostRow {
+    pub date: String,
+    pub user_id: String,
+    pub model_id: String,
+    pub amount: f64,
+    pub currency: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CostByUser {
     pub user_id: String,
