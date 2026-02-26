@@ -87,6 +87,12 @@ fn resolve_period(period: &str) -> (String, String) {
     }
 }
 
+fn snap_to_month_start(date: &str) -> String {
+    NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map(|d| format!("{:04}-{:02}-01", d.year(), d.month()))
+        .unwrap_or_else(|_| date.to_string())
+}
+
 fn get_period(params: &PeriodParams) -> String {
     params.period.as_deref().unwrap_or("30d").to_string()
 }
@@ -137,7 +143,7 @@ pub async fn home(
     #[cfg(feature = "admin")]
     {
         let daily_cost = state.service.get_daily_cost(&start, &end).await;
-        let monthly_cost = state.service.get_monthly_cost(&start, &end).await;
+        let monthly_cost = state.service.get_monthly_cost(&snap_to_month_start(&start), &end).await;
         let users = state.service.list_users().await;
         let models = state.service.list_models().await;
 
@@ -169,7 +175,7 @@ pub async fn home(
             vec![]
         };
         let monthly_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_monthly_cost_for_user(&start, &end, uid).await
+            state.service.get_monthly_cost_for_user(&snap_to_month_start(&start), &end, uid).await
         } else {
             vec![]
         };
@@ -233,8 +239,8 @@ pub async fn daily_costs(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let daily_cost = if let Some(ref _uid) = current_user_id {
-            state.service.get_daily_cost(&start, &end).await
+        let daily_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_daily_cost_for_user(&start, &end, uid).await
         } else {
             vec![]
         };
@@ -478,7 +484,7 @@ pub async fn user_monthly_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_monthly_cost_for_user(&start, &end, &user_id)
+        .get_monthly_cost_for_user(&snap_to_month_start(&start), &end, &user_id)
         .await;
 
     Html(pages::users::render_monthly_costs(
@@ -583,7 +589,7 @@ pub async fn model_monthly_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_monthly_cost_for_model(&start, &end, &model_id)
+        .get_monthly_cost_for_model(&snap_to_month_start(&start), &end, &model_id)
         .await;
 
     Html(pages::models::render_monthly_costs(
@@ -638,8 +644,8 @@ pub async fn cost_date_detail(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let daily_cost = if current_user_id.is_some() {
-            state.service.get_daily_cost(&date, &date).await
+        let daily_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_daily_cost_for_user(&date, &date, uid).await
         } else {
             vec![]
         };
@@ -864,7 +870,7 @@ pub async fn monthly_costs(
 
     #[cfg(feature = "admin")]
     {
-        let monthly_cost = state.service.get_monthly_cost(&start, &end).await;
+        let monthly_cost = state.service.get_monthly_cost(&snap_to_month_start(&start), &end).await;
 
         Html(pages::monthly::render(
             &state.base_path,
@@ -878,8 +884,8 @@ pub async fn monthly_costs(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let monthly_cost = if current_user_id.is_some() {
-            state.service.get_monthly_cost(&start, &end).await
+        let monthly_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_monthly_cost_for_user(&snap_to_month_start(&start), &end, uid).await
         } else {
             vec![]
         };
@@ -934,8 +940,8 @@ pub async fn cost_month_detail(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let daily_cost = if current_user_id.is_some() {
-            state.service.get_daily_cost(&start, &end).await
+        let daily_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_daily_cost_for_user(&start, &end, uid).await
         } else {
             vec![]
         };
