@@ -163,13 +163,13 @@ pub async fn home(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let daily_cost = if let Some(ref _uid) = current_user_id {
-            state.service.get_daily_cost(&start, &end).await
+        let daily_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_daily_cost_for_user(&start, &end, uid).await
         } else {
             vec![]
         };
-        let monthly_cost = if current_user_id.is_some() {
-            state.service.get_monthly_cost(&start, &end).await
+        let monthly_cost = if let Some(ref uid) = current_user_id {
+            state.service.get_monthly_cost_for_user(&start, &end, uid).await
         } else {
             vec![]
         };
