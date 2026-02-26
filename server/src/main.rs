@@ -212,7 +212,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let gateway_pool = db::init_pool_lazy(&app_config.database_url_gateway_ro)?;
+    log::info!("Gateway DB pool initialized");
     let cost_pool = db::init_pool(&app_config.database_url_cost).await?;
+    log::info!("Cost DB connected successfully");
     let cache_pool = cost_pool.clone();
     let ce_client = ce::new_client().await;
 
