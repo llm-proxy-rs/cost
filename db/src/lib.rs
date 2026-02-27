@@ -1,5 +1,5 @@
 use anyhow::Result;
-use common::{ApiKeyInfo, CostRecord, InferenceProfileInfo, ModelInfo, UserInfo};
+use common::{ApiKeyInfo, CostByModel, CostByUser, CostRecord, CostRow, InferenceProfileInfo, ModelInfo, UserInfo};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -255,17 +255,17 @@ pub async fn list_profiles_for_user(
         .collect())
 }
 
-// --- Cost cache functions ---
+// --- Cost table functions ---
 
-pub async fn create_cost_cache_table(pool: &PgPool) -> Result<()> {
+pub async fn create_cost_table(pool: &PgPool) -> Result<()> {
     sqlx::query(
-        r#"CREATE TABLE IF NOT EXISTS cost_cache (
-            query_type TEXT NOT NULL,
-            filter_id TEXT NOT NULL DEFAULT '',
-            date TEXT NOT NULL,
+        r#"CREATE TABLE IF NOT EXISTS cost (
+            date DATE NOT NULL,
+            user_id TEXT NOT NULL,
+            model_id TEXT NOT NULL,
             amount DOUBLE PRECISION NOT NULL,
-            currency TEXT NOT NULL,
-            PRIMARY KEY (query_type, filter_id, date)
+            currency TEXT NOT NULL DEFAULT 'USD',
+            PRIMARY KEY (date, user_id, model_id)
         )"#,
     )
     .execute(pool)
@@ -273,18 +273,31 @@ pub async fn create_cost_cache_table(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_cached_costs(
-    pool: &PgPool,
-    query_type: &str,
-    filter_id: &str,
-    start: &str,
-    end: &str,
-) -> Result<Vec<CostRecord>> {
+pub async fn upsert_cost_rows(pool: &PgPool, rows: &[CostRow]) -> Result<()> {
+    for row in rows {
+        sqlx::query(
+            r#"INSERT INTO cost (date, user_id, model_id, amount, currency)
+               VALUES ($1::date, $2, $3, $4, $5)
+               ON CONFLICT (date, user_id, model_id)
+               DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency"#,
+        )
+        .bind(&row.date)
+        .bind(&row.user_id)
+        .bind(&row.model_id)
+        .bind(row.amount)
+        .bind(&row.currency)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn get_daily_cost(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
-        "SELECT date, amount, currency FROM cost_cache WHERE query_type=$1 AND filter_id=$2 AND date>=$3 AND date<$4 ORDER BY date",
+        r#"SELECT date::text, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date
+           GROUP BY date ORDER BY date"#,
     )
-    .bind(query_type)
-    .bind(filter_id)
     .bind(start)
     .bind(end)
     .fetch_all(pool)
@@ -299,28 +312,228 @@ pub async fn get_cached_costs(
         .collect())
 }
 
-pub async fn upsert_cached_costs(
+pub async fn get_monthly_cost(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date
+           GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_cost_by_user(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostByUser>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT user_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date
+           GROUP BY user_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, amount, currency)| CostByUser {
+            user_id,
+            user_email: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_cost_by_model(
     pool: &PgPool,
-    query_type: &str,
-    filter_id: &str,
-    records: &[CostRecord],
-) -> Result<()> {
-    for record in records {
-        sqlx::query(
-            r#"INSERT INTO cost_cache (query_type, filter_id, date, amount, currency)
-               VALUES ($1, $2, $3, $4, $5)
-               ON CONFLICT (query_type, filter_id, date)
-               DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency"#,
-        )
-        .bind(query_type)
-        .bind(filter_id)
-        .bind(&record.date)
-        .bind(record.amount)
-        .bind(&record.currency)
-        .execute(pool)
-        .await?;
-    }
-    Ok(())
+    start: &str,
+    end: &str,
+) -> Result<Vec<CostByModel>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT model_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date
+           GROUP BY model_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(model_id, amount, currency)| CostByModel {
+            model_id,
+            model_name: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_cost_by_model_for_user(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    user_id: &str,
+) -> Result<Vec<CostByModel>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT model_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           GROUP BY model_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(model_id, amount, currency)| CostByModel {
+            model_id,
+            model_name: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_cost_by_user_for_model(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    model_id: &str,
+) -> Result<Vec<CostByUser>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT user_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           GROUP BY user_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, amount, currency)| CostByUser {
+            user_id,
+            user_email: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_daily_cost_for_user(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    user_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT date::text, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           GROUP BY date ORDER BY date"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_monthly_cost_for_user(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    user_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_daily_cost_for_model(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT date::text, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           GROUP BY date ORDER BY date"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_monthly_cost_for_model(
+    pool: &PgPool,
+    start: &str,
+    end: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
 }
 
 pub async fn list_profiles_for_model(
