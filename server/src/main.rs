@@ -11,9 +11,9 @@ use axum::Router;
 use clap::Parser;
 use handlers::AppState;
 use myhandlers::{callback, login, logout};
-use service::{DemoCostService, RealCostService};
+use service::RealCostService;
 use std::sync::Arc;
-use tower_sessions::{ExpiredDeletion, Expiry, MemoryStore, SessionManagerLayer};
+use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 
 use crate::config::load_config;
 
@@ -22,9 +22,6 @@ use crate::config::load_config;
 struct Args {
     #[arg(long, default_value = "config")]
     config_file: String,
-
-    #[arg(long)]
-    demo: bool,
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -40,48 +37,48 @@ pub fn build_router(state: AppState) -> Router {
     };
 
     let cost_routes = Router::new()
-        .route("/", get(handlers::home))
-        .route("/costs/daily", get(handlers::daily_costs))
-        .route("/costs/daily/{date}", get(handlers::cost_date_detail))
-        .route("/costs/daily/{date}/users", get(handlers::cost_date_users))
+        .route("/", get(handlers::render_home))
+        .route("/costs/daily", get(handlers::render_daily_costs))
+        .route("/costs/daily/{date}", get(handlers::render_date_hub))
+        .route("/costs/daily/{date}/users", get(handlers::render_date_users))
         .route(
             "/costs/daily/{date}/users/{user_id}",
-            get(handlers::cost_date_user_models),
+            get(handlers::render_date_models_for_user),
         )
         .route(
             "/costs/daily/{date}/models",
-            get(handlers::cost_date_models),
+            get(handlers::render_date_models),
         )
         .route(
             "/costs/daily/{date}/models/{model_id}",
-            get(handlers::cost_date_model_users),
+            get(handlers::render_date_users_for_model),
         )
-        .route("/costs/monthly", get(handlers::monthly_costs))
-        .route("/costs/monthly/{month}", get(handlers::cost_month_detail))
+        .route("/costs/monthly", get(handlers::render_monthly_costs))
+        .route("/costs/monthly/{month}", get(handlers::render_month_hub))
         .route(
             "/costs/monthly/{month}/users",
-            get(handlers::cost_month_users),
+            get(handlers::render_month_users),
         )
         .route(
             "/costs/monthly/{month}/users/{user_id}",
-            get(handlers::cost_month_user_models),
+            get(handlers::render_month_models_for_user),
         )
         .route(
             "/costs/monthly/{month}/models",
-            get(handlers::cost_month_models),
+            get(handlers::render_month_models),
         )
         .route(
             "/costs/monthly/{month}/models/{model_id}",
-            get(handlers::cost_month_model_users),
+            get(handlers::render_month_users_for_model),
         )
-        .route("/users", get(handlers::users))
-        .route("/models", get(handlers::models))
-        .route("/users/{id}", get(handlers::user_detail))
-        .route("/models/{id}", get(handlers::model_detail))
-        .route("/users/{id}/daily", get(handlers::user_daily_costs))
-        .route("/users/{id}/monthly", get(handlers::user_monthly_costs))
-        .route("/models/{id}/daily", get(handlers::model_daily_costs))
-        .route("/models/{id}/monthly", get(handlers::model_monthly_costs))
+        .route("/users", get(handlers::render_users))
+        .route("/models", get(handlers::render_models))
+        .route("/users/{id}", get(handlers::render_user_hub))
+        .route("/models/{id}", get(handlers::render_model_hub))
+        .route("/users/{id}/daily", get(handlers::render_user_daily_costs))
+        .route("/users/{id}/monthly", get(handlers::render_user_monthly_costs))
+        .route("/models/{id}/daily", get(handlers::render_model_daily_costs))
+        .route("/models/{id}/monthly", get(handlers::render_model_monthly_costs))
         .with_state(state);
 
     let cost_routes = if base == "/" {
@@ -98,101 +95,11 @@ pub fn build_router(state: AppState) -> Router {
         .merge(cost_routes)
 }
 
-pub fn build_demo_router(state: AppState) -> Router {
-    let base = state.base_path.clone();
-
-    let cost_routes = Router::new()
-        .route("/", get(handlers::home))
-        .route("/costs/daily", get(handlers::daily_costs))
-        .route("/costs/daily/{date}", get(handlers::cost_date_detail))
-        .route("/costs/daily/{date}/users", get(handlers::cost_date_users))
-        .route(
-            "/costs/daily/{date}/users/{user_id}",
-            get(handlers::cost_date_user_models),
-        )
-        .route(
-            "/costs/daily/{date}/models",
-            get(handlers::cost_date_models),
-        )
-        .route(
-            "/costs/daily/{date}/models/{model_id}",
-            get(handlers::cost_date_model_users),
-        )
-        .route("/costs/monthly", get(handlers::monthly_costs))
-        .route("/costs/monthly/{month}", get(handlers::cost_month_detail))
-        .route(
-            "/costs/monthly/{month}/users",
-            get(handlers::cost_month_users),
-        )
-        .route(
-            "/costs/monthly/{month}/users/{user_id}",
-            get(handlers::cost_month_user_models),
-        )
-        .route(
-            "/costs/monthly/{month}/models",
-            get(handlers::cost_month_models),
-        )
-        .route(
-            "/costs/monthly/{month}/models/{model_id}",
-            get(handlers::cost_month_model_users),
-        )
-        .route("/users", get(handlers::users))
-        .route("/models", get(handlers::models))
-        .route("/users/{id}", get(handlers::user_detail))
-        .route("/models/{id}", get(handlers::model_detail))
-        .route("/users/{id}/daily", get(handlers::user_daily_costs))
-        .route("/users/{id}/monthly", get(handlers::user_monthly_costs))
-        .route("/models/{id}/daily", get(handlers::model_daily_costs))
-        .route("/models/{id}/monthly", get(handlers::model_monthly_costs))
-        .with_state(state);
-
-    let cost_routes = if base == "/" {
-        cost_routes
-    } else {
-        Router::new().nest(&base, cost_routes)
-    };
-
-    Router::new()
-        .route("/login", get(handlers::demo_login))
-        .merge(cost_routes)
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("server=info"));
 
     let args = Args::parse();
-
-    if args.demo {
-        log::info!("Running in DEMO mode");
-
-        let session_store = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store)
-            .with_expiry(Expiry::OnInactivity(time::Duration::seconds(86400)))
-            .with_same_site(tower_sessions::cookie::SameSite::Lax);
-
-        let state = AppState {
-            service: Arc::new(DemoCostService),
-            base_path: "/".to_string(),
-            cognito_client_id: String::new(),
-            cognito_client_secret: String::new(),
-            cognito_domain: String::new(),
-            cognito_redirect_uri: String::new(),
-            cognito_region: String::new(),
-            cognito_user_pool_id: String::new(),
-        };
-
-        let app = build_demo_router(state).layer(session_layer);
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
-        log::info!("Listening on http://127.0.0.1:8080");
-
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal_simple())
-            .await?;
-
-        return Ok(());
-    }
 
     if cfg!(feature = "admin") {
         log::info!("Running in ADMIN mode (all users visible)");
@@ -286,29 +193,5 @@ async fn shutdown_signal(deletion_task_abort_handle: tokio::task::AbortHandle) {
     tokio::select! {
         _ = ctrl_c => { deletion_task_abort_handle.abort() },
         _ = terminate => { deletion_task_abort_handle.abort() },
-    }
-}
-
-async fn shutdown_signal_simple() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
     }
 }

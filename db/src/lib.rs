@@ -555,6 +555,62 @@ pub async fn get_monthly_cost_for_model(
         .collect())
 }
 
+pub async fn get_daily_cost_for_user_and_model(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    user_id: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT date::text, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3 AND model_id = $4
+           GROUP BY date ORDER BY date"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_monthly_cost_for_user_and_model(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    user_id: &str,
+    model_id: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3 AND model_id = $4
+           GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
 pub async fn list_profiles_for_model(
     pool: &PgPool,
     model_id: Uuid,
