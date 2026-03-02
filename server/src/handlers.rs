@@ -1,10 +1,13 @@
+#[cfg(not(feature = "admin"))]
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use axum::extract::{Path, Query, State};
 #[cfg(not(feature = "admin"))]
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use chrono::{Datelike, NaiveDate, Utc};
 use serde::Deserialize;
-use std::sync::Arc;
 use tower_sessions::Session;
 
 use crate::pages;
@@ -81,7 +84,7 @@ fn get_page(params: &PeriodParams) -> usize {
     params.page.unwrap_or(1).max(1)
 }
 
-fn month_to_range(month: &str) -> (NaiveDate, NaiveDate) {
+fn parse_month_range(month: &str) -> (NaiveDate, NaiveDate) {
     let start_str = format!("{}-01", month);
     let start =
         NaiveDate::parse_from_str(&start_str, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
@@ -107,7 +110,7 @@ async fn resolve_current_user_id(service: &dyn CostService, email: &str) -> Opti
     service.get_user_id_by_email(email).await
 }
 
-pub async fn home(
+pub async fn render_home(
     session: Session,
     State(state): State<AppState>,
     Query(params): Query<PeriodParams>,
@@ -189,7 +192,7 @@ pub async fn home(
     }
 }
 
-pub async fn daily_costs(
+pub async fn render_daily_costs(
     session: Session,
     State(state): State<AppState>,
     Query(params): Query<PeriodParams>,
@@ -235,7 +238,7 @@ pub async fn daily_costs(
     }
 }
 
-pub async fn users(
+pub async fn render_users(
     session: Session,
     State(state): State<AppState>,
     Query(params): Query<PeriodParams>,
@@ -294,7 +297,7 @@ pub async fn users(
     }
 }
 
-pub async fn models(
+pub async fn render_models(
     session: Session,
     State(state): State<AppState>,
     Query(params): Query<PeriodParams>,
@@ -334,7 +337,20 @@ pub async fn models(
         } else {
             vec![]
         };
-        let models_enriched = state.service.list_models_enriched().await;
+        // Filter models to only those the user has cost data for
+        let cost_model_ids: HashSet<String> =
+            costs.iter().map(|c| c.model_id.clone()).collect();
+        let models_enriched: Vec<_> = state
+            .service
+            .list_models_enriched()
+            .await
+            .into_iter()
+            .filter(|m| cost_model_ids.contains(&m.model_id))
+            .map(|mut m| {
+                m.user_count = 1;
+                m
+            })
+            .collect();
 
         Html(pages::models::render_index(
             &state.base_path,
@@ -347,7 +363,7 @@ pub async fn models(
     }
 }
 
-pub async fn user_detail(
+pub async fn render_user_hub(
     session: Session,
     State(state): State<AppState>,
     Path(user_id): Path<String>,
@@ -392,7 +408,7 @@ pub async fn user_detail(
     }
 }
 
-pub async fn user_daily_costs(
+pub async fn render_user_daily_costs(
     session: Session,
     State(state): State<AppState>,
     Path(user_id): Path<String>,
@@ -435,7 +451,7 @@ pub async fn user_daily_costs(
     .into_response()
 }
 
-pub async fn user_monthly_costs(
+pub async fn render_user_monthly_costs(
     session: Session,
     State(state): State<AppState>,
     Path(user_id): Path<String>,
@@ -478,7 +494,7 @@ pub async fn user_monthly_costs(
     .into_response()
 }
 
-pub async fn model_detail(
+pub async fn render_model_hub(
     session: Session,
     State(state): State<AppState>,
     Path(model_id): Path<String>,
@@ -490,9 +506,32 @@ pub async fn model_detail(
     };
 
     let period = get_period(&params);
+
+    #[cfg(not(feature = "admin"))]
+    {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        let has_access = if let Some(ref uid) = current_user_id {
+            let (start, end) = resolve_period("12m");
+            let costs = state
+                .service
+                .get_cost_by_model_for_user(start, end, uid)
+                .await;
+            costs.iter().any(|c| c.model_id == model_id)
+        } else {
+            false
+        };
+        if !has_access {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+
     let model_info = state.service.get_model_info(&model_id).await;
     match model_info {
-        Some(info) => {
+        Some(mut info) => {
+            #[cfg(not(feature = "admin"))]
+            {
+                info.user_count = 1;
+            }
             Html(pages::models::render_hub(&state.base_path, &period, &info)).into_response()
         }
         None => {
@@ -506,14 +545,14 @@ pub async fn model_detail(
                 model_name,
                 is_disabled: false,
                 protected: false,
-                user_count: 0,
+                user_count: 1,
             };
             Html(pages::models::render_hub(&state.base_path, &period, &info)).into_response()
         }
     }
 }
 
-pub async fn model_daily_costs(
+pub async fn render_model_daily_costs(
     session: Session,
     State(state): State<AppState>,
     Path(model_id): Path<String>,
@@ -532,10 +571,25 @@ pub async fn model_daily_costs(
         .get_model_name(&model_id)
         .await
         .unwrap_or_else(|| "unknown".to_string());
+
+    #[cfg(feature = "admin")]
     let costs = state
         .service
         .get_daily_cost_for_model(start, end, &model_id)
         .await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if let Some(ref uid) = current_user_id {
+            state
+                .service
+                .get_daily_cost_for_user_and_model(start, end, uid, &model_id)
+                .await
+        } else {
+            vec![]
+        }
+    };
 
     Html(pages::models::render_daily_costs(
         &state.base_path,
@@ -548,7 +602,7 @@ pub async fn model_daily_costs(
     .into_response()
 }
 
-pub async fn model_monthly_costs(
+pub async fn render_model_monthly_costs(
     session: Session,
     State(state): State<AppState>,
     Path(model_id): Path<String>,
@@ -567,10 +621,25 @@ pub async fn model_monthly_costs(
         .get_model_name(&model_id)
         .await
         .unwrap_or_else(|| "unknown".to_string());
+
+    #[cfg(feature = "admin")]
     let costs = state
         .service
         .get_monthly_cost_for_model(snap_to_month_start(start), end, &model_id)
         .await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if let Some(ref uid) = current_user_id {
+            state
+                .service
+                .get_monthly_cost_for_user_and_model(snap_to_month_start(start), end, uid, &model_id)
+                .await
+        } else {
+            vec![]
+        }
+    };
 
     Html(pages::models::render_monthly_costs(
         &state.base_path,
@@ -585,7 +654,7 @@ pub async fn model_monthly_costs(
 
 // --- Daily cost drill-down handlers ---
 
-pub async fn cost_date_detail(
+pub async fn render_date_hub(
     session: Session,
     State(state): State<AppState>,
     Path(date): Path<String>,
@@ -666,7 +735,7 @@ pub async fn cost_date_detail(
     }
 }
 
-pub async fn cost_date_users(
+pub async fn render_date_users(
     session: Session,
     State(state): State<AppState>,
     Path(date): Path<String>,
@@ -717,7 +786,7 @@ pub async fn cost_date_users(
     }
 }
 
-pub async fn cost_date_models(
+pub async fn render_date_models(
     session: Session,
     State(state): State<AppState>,
     Path(date): Path<String>,
@@ -770,7 +839,7 @@ pub async fn cost_date_models(
     }
 }
 
-pub async fn cost_date_user_models(
+pub async fn render_date_models_for_user(
     session: Session,
     State(state): State<AppState>,
     Path((date, user_id)): Path<(String, String)>,
@@ -780,6 +849,14 @@ pub async fn cost_date_user_models(
         Ok(email) => email,
         Err(redirect) => return redirect,
     };
+
+    #[cfg(not(feature = "admin"))]
+    {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if current_user_id.as_deref() != Some(user_id.as_str()) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
 
     let period = get_period(&params);
     let page = get_page(&params);
@@ -806,7 +883,7 @@ pub async fn cost_date_user_models(
     .into_response()
 }
 
-pub async fn cost_date_model_users(
+pub async fn render_date_users_for_model(
     session: Session,
     State(state): State<AppState>,
     Path((date, model_id)): Path<(String, String)>,
@@ -826,10 +903,26 @@ pub async fn cost_date_model_users(
         .get_model_name(&model_id)
         .await
         .unwrap_or_else(|| "unknown".to_string());
+
+    #[cfg(feature = "admin")]
     let costs = state
         .service
         .get_cost_by_user_for_model(date_nd, date_nd, &model_id)
         .await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        let all = state
+            .service
+            .get_cost_by_user_for_model(date_nd, date_nd, &model_id)
+            .await;
+        if let Some(ref uid) = current_user_id {
+            all.into_iter().filter(|c| c.user_id == *uid).collect()
+        } else {
+            vec![]
+        }
+    };
 
     Html(pages::costs::render_model_users(
         &state.base_path,
@@ -844,7 +937,7 @@ pub async fn cost_date_model_users(
 
 // --- Monthly cost handlers ---
 
-pub async fn monthly_costs(
+pub async fn render_monthly_costs(
     session: Session,
     State(state): State<AppState>,
     Query(params): Query<PeriodParams>,
@@ -890,7 +983,7 @@ pub async fn monthly_costs(
     }
 }
 
-pub async fn cost_month_detail(
+pub async fn render_month_hub(
     session: Session,
     State(state): State<AppState>,
     Path(month): Path<String>,
@@ -902,7 +995,7 @@ pub async fn cost_month_detail(
     };
 
     let period = get_period(&params);
-    let (start, end) = month_to_range(&month);
+    let (start, end) = parse_month_range(&month);
 
     #[cfg(feature = "admin")]
     {
@@ -970,7 +1063,7 @@ pub async fn cost_month_detail(
     }
 }
 
-pub async fn cost_month_users(
+pub async fn render_month_users(
     session: Session,
     State(state): State<AppState>,
     Path(month): Path<String>,
@@ -983,7 +1076,7 @@ pub async fn cost_month_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
-    let (start, end) = month_to_range(&month);
+    let (start, end) = parse_month_range(&month);
 
     #[cfg(feature = "admin")]
     {
@@ -1020,7 +1113,7 @@ pub async fn cost_month_users(
     }
 }
 
-pub async fn cost_month_models(
+pub async fn render_month_models(
     session: Session,
     State(state): State<AppState>,
     Path(month): Path<String>,
@@ -1033,7 +1126,7 @@ pub async fn cost_month_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
-    let (start, end) = month_to_range(&month);
+    let (start, end) = parse_month_range(&month);
 
     #[cfg(feature = "admin")]
     {
@@ -1072,7 +1165,7 @@ pub async fn cost_month_models(
     }
 }
 
-pub async fn cost_month_user_models(
+pub async fn render_month_models_for_user(
     session: Session,
     State(state): State<AppState>,
     Path((month, user_id)): Path<(String, String)>,
@@ -1083,9 +1176,17 @@ pub async fn cost_month_user_models(
         Err(redirect) => return redirect,
     };
 
+    #[cfg(not(feature = "admin"))]
+    {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        if current_user_id.as_deref() != Some(user_id.as_str()) {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+
     let period = get_period(&params);
     let page = get_page(&params);
-    let (start, end) = month_to_range(&month);
+    let (start, end) = parse_month_range(&month);
     let user_email = state
         .service
         .get_user_email(&user_id)
@@ -1107,7 +1208,7 @@ pub async fn cost_month_user_models(
     .into_response()
 }
 
-pub async fn cost_month_model_users(
+pub async fn render_month_users_for_model(
     session: Session,
     State(state): State<AppState>,
     Path((month, model_id)): Path<(String, String)>,
@@ -1120,16 +1221,32 @@ pub async fn cost_month_model_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
-    let (start, end) = month_to_range(&month);
+    let (start, end) = parse_month_range(&month);
     let model_name = state
         .service
         .get_model_name(&model_id)
         .await
         .unwrap_or_else(|| "unknown".to_string());
+
+    #[cfg(feature = "admin")]
     let costs = state
         .service
         .get_cost_by_user_for_model(start, end, &model_id)
         .await;
+
+    #[cfg(not(feature = "admin"))]
+    let costs = {
+        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        let all = state
+            .service
+            .get_cost_by_user_for_model(start, end, &model_id)
+            .await;
+        if let Some(ref uid) = current_user_id {
+            all.into_iter().filter(|c| c.user_id == *uid).collect()
+        } else {
+            vec![]
+        }
+    };
 
     Html(pages::monthly::render_model_users(
         &state.base_path,
@@ -1140,11 +1257,6 @@ pub async fn cost_month_model_users(
         &costs,
     ))
     .into_response()
-}
-
-pub async fn demo_login(session: Session) -> Response {
-    let _ = session.insert("email", "alice@example.com").await;
-    Redirect::to("/").into_response()
 }
 
 #[cfg(test)]
@@ -1229,29 +1341,29 @@ mod tests {
     }
 
     #[test]
-    fn month_to_range_january() {
-        let (start, end) = month_to_range("2024-01");
+    fn parse_month_range_january() {
+        let (start, end) = parse_month_range("2024-01");
         assert_eq!(start.to_string(), "2024-01-01");
         assert_eq!(end.to_string(), "2024-01-31");
     }
 
     #[test]
-    fn month_to_range_february_leap() {
-        let (start, end) = month_to_range("2024-02");
+    fn parse_month_range_february_leap() {
+        let (start, end) = parse_month_range("2024-02");
         assert_eq!(start.to_string(), "2024-02-01");
         assert_eq!(end.to_string(), "2024-02-29");
     }
 
     #[test]
-    fn month_to_range_february_non_leap() {
-        let (start, end) = month_to_range("2023-02");
+    fn parse_month_range_february_non_leap() {
+        let (start, end) = parse_month_range("2023-02");
         assert_eq!(start.to_string(), "2023-02-01");
         assert_eq!(end.to_string(), "2023-02-28");
     }
 
     #[test]
-    fn month_to_range_december() {
-        let (start, end) = month_to_range("2024-12");
+    fn parse_month_range_december() {
+        let (start, end) = parse_month_range("2024-12");
         assert_eq!(start.to_string(), "2024-12-01");
         assert_eq!(end.to_string(), "2024-12-31");
     }

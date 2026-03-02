@@ -117,6 +117,26 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
+    async fn get_daily_cost_for_user_and_model(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _user_id: &str,
+        _model_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
+    async fn get_monthly_cost_for_user_and_model(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _user_id: &str,
+        _model_id: &str,
+    ) -> Vec<CostRecord> {
+        self.daily.clone()
+    }
+
     async fn get_user_email(&self, _user_id: &str) -> Option<String> {
         Some("alice@example.com".to_string())
     }
