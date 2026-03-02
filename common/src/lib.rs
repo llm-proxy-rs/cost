@@ -1,8 +1,9 @@
+use chrono::NaiveDate;
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub struct CostRow {
-    pub date: String,
+    pub date: NaiveDate,
     pub user_id: String,
     pub model_id: String,
     pub amount: f64,

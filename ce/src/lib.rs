@@ -1,8 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use aws_sdk_costexplorer::types::{
     DateInterval, Expression, Granularity, GroupDefinition, GroupDefinitionType, TagValues,
 };
 use aws_sdk_costexplorer::Client;
+use chrono::NaiveDate;
 use common::CostRow;
 
 pub async fn new_client() -> Client {
@@ -80,10 +81,12 @@ pub async fn get_daily_cost_by_user_and_model(
         let resp = req.send().await?;
 
         for result_by_time in resp.results_by_time() {
-            let date = result_by_time
+            let date_str = result_by_time
                 .time_period()
                 .map(|tp| tp.start().to_string())
                 .unwrap_or_default();
+            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                .context("invalid date from CE API")?;
 
             for group in result_by_time.groups() {
                 let keys: Vec<&str> = group.keys().iter().map(|s| s.as_str()).collect();
@@ -102,7 +105,7 @@ pub async fn get_daily_cost_by_user_and_model(
 
                 let (amount, currency) = extract_blended_cost(group.metrics());
                 results.push(CostRow {
-                    date: date.clone(),
+                    date,
                     user_id: user_id.to_string(),
                     model_id: model_id.to_string(),
                     amount,

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use common::{
     ApiKeyInfo, CostByModel, CostByUser, CostRecord, InferenceProfileInfo, ModelInfo, UserInfo,
 };
@@ -9,44 +9,44 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait CostService: Send + Sync {
-    async fn get_daily_cost(&self, start: &str, end: &str) -> Vec<CostRecord>;
-    async fn get_monthly_cost(&self, start: &str, end: &str) -> Vec<CostRecord>;
-    async fn get_cost_by_user(&self, start: &str, end: &str) -> Vec<CostByUser>;
-    async fn get_cost_by_model(&self, start: &str, end: &str) -> Vec<CostByModel>;
+    async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
+    async fn get_monthly_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
+    async fn get_cost_by_user(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser>;
+    async fn get_cost_by_model(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel>;
     async fn get_cost_by_model_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostByModel>;
     async fn get_cost_by_user_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostByUser>;
     async fn get_daily_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord>;
     async fn get_monthly_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord>;
     async fn get_daily_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord>;
     async fn get_monthly_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord>;
     async fn get_user_email(&self, user_id: &str) -> Option<String>;
@@ -67,7 +67,7 @@ pub struct RealCostService {
 
 #[async_trait]
 impl CostService for RealCostService {
-    async fn get_daily_cost(&self, start: &str, end: &str) -> Vec<CostRecord> {
+    async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord> {
         db::get_daily_cost(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
@@ -76,7 +76,7 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_monthly_cost(&self, start: &str, end: &str) -> Vec<CostRecord> {
+    async fn get_monthly_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord> {
         db::get_monthly_cost(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
@@ -85,7 +85,7 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_cost_by_user(&self, start: &str, end: &str) -> Vec<CostByUser> {
+    async fn get_cost_by_user(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser> {
         let mut costs = db::get_cost_by_user(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
@@ -98,7 +98,7 @@ impl CostService for RealCostService {
         costs
     }
 
-    async fn get_cost_by_model(&self, start: &str, end: &str) -> Vec<CostByModel> {
+    async fn get_cost_by_model(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel> {
         let mut costs = db::get_cost_by_model(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
@@ -113,8 +113,8 @@ impl CostService for RealCostService {
 
     async fn get_cost_by_model_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostByModel> {
         let mut costs = db::get_cost_by_model_for_user(&self.cost_pool, start, end, user_id)
@@ -131,8 +131,8 @@ impl CostService for RealCostService {
 
     async fn get_cost_by_user_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostByUser> {
         let mut costs = db::get_cost_by_user_for_model(&self.cost_pool, start, end, model_id)
@@ -149,8 +149,8 @@ impl CostService for RealCostService {
 
     async fn get_daily_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
         db::get_daily_cost_for_user(&self.cost_pool, start, end, user_id)
@@ -163,8 +163,8 @@ impl CostService for RealCostService {
 
     async fn get_monthly_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
         db::get_monthly_cost_for_user(&self.cost_pool, start, end, user_id)
@@ -177,8 +177,8 @@ impl CostService for RealCostService {
 
     async fn get_daily_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
         db::get_daily_cost_for_model(&self.cost_pool, start, end, model_id)
@@ -191,8 +191,8 @@ impl CostService for RealCostService {
 
     async fn get_monthly_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
         db::get_monthly_cost_for_model(&self.cost_pool, start, end, model_id)
@@ -490,21 +490,25 @@ impl DemoCostService {
 
 #[async_trait]
 impl CostService for DemoCostService {
-    async fn get_daily_cost(&self, start: &str, end: &str) -> Vec<CostRecord> {
+    async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         Self::daily_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .collect()
     }
 
-    async fn get_monthly_cost(&self, start: &str, end: &str) -> Vec<CostRecord> {
+    async fn get_monthly_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         Self::monthly_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .collect()
     }
 
-    async fn get_cost_by_user(&self, _start: &str, _end: &str) -> Vec<CostByUser> {
+    async fn get_cost_by_user(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByUser> {
         let mut map: HashMap<String, f64> = HashMap::new();
         for (uid, _, amt) in Self::cost_by_user_model() {
             *map.entry(uid).or_default() += amt;
@@ -526,7 +530,7 @@ impl CostService for DemoCostService {
             .collect()
     }
 
-    async fn get_cost_by_model(&self, _start: &str, _end: &str) -> Vec<CostByModel> {
+    async fn get_cost_by_model(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByModel> {
         let mut map: HashMap<String, f64> = HashMap::new();
         for (_, mid, amt) in Self::cost_by_user_model() {
             *map.entry(mid).or_default() += amt;
@@ -550,8 +554,8 @@ impl CostService for DemoCostService {
 
     async fn get_cost_by_model_for_user(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostByModel> {
         let models = Self::models();
@@ -575,8 +579,8 @@ impl CostService for DemoCostService {
 
     async fn get_cost_by_user_for_model(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostByUser> {
         let users = Self::users();
@@ -600,14 +604,16 @@ impl CostService for DemoCostService {
 
     async fn get_daily_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         let fraction = Self::user_fraction(user_id);
         Self::daily_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .map(|r| CostRecord {
                 amount: r.amount * fraction,
                 ..r
@@ -617,14 +623,16 @@ impl CostService for DemoCostService {
 
     async fn get_monthly_cost_for_user(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         let fraction = Self::user_fraction(user_id);
         Self::monthly_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .map(|r| CostRecord {
                 amount: r.amount * fraction,
                 ..r
@@ -634,14 +642,16 @@ impl CostService for DemoCostService {
 
     async fn get_daily_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         let fraction = Self::model_fraction(model_id);
         Self::daily_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .map(|r| CostRecord {
                 amount: r.amount * fraction,
                 ..r
@@ -651,14 +661,16 @@ impl CostService for DemoCostService {
 
     async fn get_monthly_cost_for_model(
         &self,
-        start: &str,
-        end: &str,
+        start: NaiveDate,
+        end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
+        let start = start.to_string();
+        let end = end.to_string();
         let fraction = Self::model_fraction(model_id);
         Self::monthly_costs()
             .into_iter()
-            .filter(|r| r.date.as_str() >= start && r.date.as_str() <= end)
+            .filter(|r| r.date.as_str() >= start.as_str() && r.date.as_str() <= end.as_str())
             .map(|r| CostRecord {
                 amount: r.amount * fraction,
                 ..r

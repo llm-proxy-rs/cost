@@ -1,4 +1,7 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
+use chrono::NaiveDate;
 use common::{ApiKeyInfo, CostByModel, CostByUser, CostRecord, CostRow, InferenceProfileInfo, ModelInfo, UserInfo};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -62,6 +65,20 @@ pub async fn list_models(pool: &PgPool) -> Result<Vec<(Uuid, String)>> {
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+pub async fn list_user_ids(pool: &PgPool) -> Result<HashSet<String>> {
+    let rows = sqlx::query_scalar::<_, Uuid>("SELECT user_id FROM users")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|id| id.to_string()).collect())
+}
+
+pub async fn list_model_ids(pool: &PgPool) -> Result<HashSet<String>> {
+    let rows = sqlx::query_scalar::<_, Uuid>("SELECT model_id FROM models")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|id| id.to_string()).collect())
 }
 
 pub async fn list_users_enriched(pool: &PgPool) -> Result<Vec<UserInfo>> {
@@ -265,6 +282,8 @@ pub async fn create_cost_table(pool: &PgPool) -> Result<()> {
             model_id TEXT NOT NULL,
             amount DOUBLE PRECISION NOT NULL,
             currency TEXT NOT NULL DEFAULT 'USD',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (date, user_id, model_id)
         )"#,
     )
@@ -277,9 +296,9 @@ pub async fn upsert_cost_rows(pool: &PgPool, rows: &[CostRow]) -> Result<()> {
     for row in rows {
         sqlx::query(
             r#"INSERT INTO cost (date, user_id, model_id, amount, currency)
-               VALUES ($1::date, $2, $3, $4, $5)
+               VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (date, user_id, model_id)
-               DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency"#,
+               DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency, updated_at=NOW()"#,
         )
         .bind(&row.date)
         .bind(&row.user_id)
@@ -292,10 +311,10 @@ pub async fn upsert_cost_rows(pool: &PgPool, rows: &[CostRow]) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_daily_cost(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostRecord>> {
+pub async fn get_daily_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT date::text, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date
+           FROM cost WHERE date >= $1 AND date < $2
            GROUP BY date ORDER BY date"#,
     )
     .bind(start)
@@ -312,10 +331,10 @@ pub async fn get_daily_cost(pool: &PgPool, start: &str, end: &str) -> Result<Vec
         .collect())
 }
 
-pub async fn get_monthly_cost(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostRecord>> {
+pub async fn get_monthly_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date
+           FROM cost WHERE date >= $1 AND date < $2
            GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
     )
     .bind(start)
@@ -332,10 +351,10 @@ pub async fn get_monthly_cost(pool: &PgPool, start: &str, end: &str) -> Result<V
         .collect())
 }
 
-pub async fn get_cost_by_user(pool: &PgPool, start: &str, end: &str) -> Result<Vec<CostByUser>> {
+pub async fn get_cost_by_user(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostByUser>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT user_id, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date
+           FROM cost WHERE date >= $1 AND date < $2
            GROUP BY user_id ORDER BY SUM(amount) DESC"#,
     )
     .bind(start)
@@ -355,12 +374,12 @@ pub async fn get_cost_by_user(pool: &PgPool, start: &str, end: &str) -> Result<V
 
 pub async fn get_cost_by_model(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
 ) -> Result<Vec<CostByModel>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT model_id, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date
+           FROM cost WHERE date >= $1 AND date < $2
            GROUP BY model_id ORDER BY SUM(amount) DESC"#,
     )
     .bind(start)
@@ -380,13 +399,13 @@ pub async fn get_cost_by_model(
 
 pub async fn get_cost_by_model_for_user(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     user_id: &str,
 ) -> Result<Vec<CostByModel>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT model_id, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3
            GROUP BY model_id ORDER BY SUM(amount) DESC"#,
     )
     .bind(start)
@@ -407,13 +426,13 @@ pub async fn get_cost_by_model_for_user(
 
 pub async fn get_cost_by_user_for_model(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     model_id: &str,
 ) -> Result<Vec<CostByUser>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT user_id, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND model_id = $3
            GROUP BY user_id ORDER BY SUM(amount) DESC"#,
     )
     .bind(start)
@@ -434,13 +453,13 @@ pub async fn get_cost_by_user_for_model(
 
 pub async fn get_daily_cost_for_user(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     user_id: &str,
 ) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT date::text, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3
            GROUP BY date ORDER BY date"#,
     )
     .bind(start)
@@ -460,13 +479,13 @@ pub async fn get_daily_cost_for_user(
 
 pub async fn get_monthly_cost_for_user(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     user_id: &str,
 ) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND user_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3
            GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
     )
     .bind(start)
@@ -486,13 +505,13 @@ pub async fn get_monthly_cost_for_user(
 
 pub async fn get_daily_cost_for_model(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     model_id: &str,
 ) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT date::text, SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND model_id = $3
            GROUP BY date ORDER BY date"#,
     )
     .bind(start)
@@ -512,13 +531,13 @@ pub async fn get_daily_cost_for_model(
 
 pub async fn get_monthly_cost_for_model(
     pool: &PgPool,
-    start: &str,
-    end: &str,
+    start: NaiveDate,
+    end: NaiveDate,
     model_id: &str,
 ) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
-           FROM cost WHERE date >= $1::date AND date < $2::date AND model_id = $3
+           FROM cost WHERE date >= $1 AND date < $2 AND model_id = $3
            GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
     )
     .bind(start)
