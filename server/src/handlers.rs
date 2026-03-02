@@ -28,69 +28,49 @@ pub struct PeriodParams {
     pub page: Option<usize>,
 }
 
-fn resolve_period(period: &str) -> (String, String) {
+fn resolve_period(period: &str) -> (NaiveDate, NaiveDate) {
     let today = Utc::now().date_naive();
     match period {
         "7d" => {
             let start = today - chrono::Duration::days(6);
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            (start, today)
         }
         "month" => {
-            let start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            let start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                .unwrap_or(today);
+            (start, today)
         }
         "last_month" => {
-            let first_of_current = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
+            let first_of_current = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                .unwrap_or(today);
             let last_of_prev = first_of_current - chrono::Duration::days(1);
             let first_of_prev =
-                NaiveDate::from_ymd_opt(last_of_prev.year(), last_of_prev.month(), 1).unwrap();
-            (
-                first_of_prev.format("%Y-%m-%d").to_string(),
-                last_of_prev.format("%Y-%m-%d").to_string(),
-            )
+                NaiveDate::from_ymd_opt(last_of_prev.year(), last_of_prev.month(), 1)
+                    .unwrap_or(last_of_prev);
+            (first_of_prev, last_of_prev)
         }
         "3m" => {
             let start = today - chrono::Duration::days(90);
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            (start, today)
         }
         "6m" => {
             let start = today - chrono::Duration::days(180);
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            (start, today)
         }
         "12m" => {
             let start = today - chrono::Duration::days(365);
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            (start, today)
         }
         _ => {
             // default: 30d
             let start = today - chrono::Duration::days(29);
-            (
-                start.format("%Y-%m-%d").to_string(),
-                today.format("%Y-%m-%d").to_string(),
-            )
+            (start, today)
         }
     }
 }
 
-fn snap_to_month_start(date: &str) -> String {
-    NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map(|d| format!("{:04}-{:02}-01", d.year(), d.month()))
-        .unwrap_or_else(|_| date.to_string())
+fn snap_to_month_start(date: NaiveDate) -> NaiveDate {
+    NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap_or(date)
 }
 
 fn get_period(params: &PeriodParams) -> String {
@@ -101,17 +81,17 @@ fn get_page(params: &PeriodParams) -> usize {
     params.page.unwrap_or(1).max(1)
 }
 
-fn month_to_range(month: &str) -> (String, String) {
-    let start = format!("{}-01", month);
-    let parsed =
-        NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
-    let (y, m) = if parsed.month() == 12 {
-        (parsed.year() + 1, 1)
+fn month_to_range(month: &str) -> (NaiveDate, NaiveDate) {
+    let start_str = format!("{}-01", month);
+    let start =
+        NaiveDate::parse_from_str(&start_str, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
+    let (y, m) = if start.month() == 12 {
+        (start.year() + 1, 1)
     } else {
-        (parsed.year(), parsed.month() + 1)
+        (start.year(), start.month() + 1)
     };
-    let last_day = NaiveDate::from_ymd_opt(y, m, 1).unwrap() - chrono::Duration::days(1);
-    let end = last_day.format("%Y-%m-%d").to_string();
+    let end = NaiveDate::from_ymd_opt(y, m, 1)
+        .unwrap_or(start) - chrono::Duration::days(1);
     (start, end)
 }
 
@@ -142,8 +122,8 @@ pub async fn home(
 
     #[cfg(feature = "admin")]
     {
-        let daily_cost = state.service.get_daily_cost(&start, &end).await;
-        let monthly_cost = state.service.get_monthly_cost(&snap_to_month_start(&start), &end).await;
+        let daily_cost = state.service.get_daily_cost(start, end).await;
+        let monthly_cost = state.service.get_monthly_cost(snap_to_month_start(start), end).await;
         let users = state.service.list_users().await;
         let models = state.service.list_models().await;
 
@@ -170,19 +150,19 @@ pub async fn home(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(&start, &end, uid).await
+            state.service.get_daily_cost_for_user(start, end, uid).await
         } else {
             vec![]
         };
         let monthly_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_monthly_cost_for_user(&snap_to_month_start(&start), &end, uid).await
+            state.service.get_monthly_cost_for_user(snap_to_month_start(start), end, uid).await
         } else {
             vec![]
         };
         let model_count = if let Some(ref uid) = current_user_id {
             let costs = state
                 .service
-                .get_cost_by_model_for_user(&start, &end, uid)
+                .get_cost_by_model_for_user(start, end, uid)
                 .await;
             costs.len()
         } else {
@@ -225,7 +205,7 @@ pub async fn daily_costs(
 
     #[cfg(feature = "admin")]
     {
-        let daily_cost = state.service.get_daily_cost(&start, &end).await;
+        let daily_cost = state.service.get_daily_cost(start, end).await;
 
         Html(pages::costs::render(
             &state.base_path,
@@ -240,7 +220,7 @@ pub async fn daily_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(&start, &end, uid).await
+            state.service.get_daily_cost_for_user(start, end, uid).await
         } else {
             vec![]
         };
@@ -272,7 +252,7 @@ pub async fn users(
     #[cfg(feature = "admin")]
     {
         let users_enriched = state.service.list_users_enriched().await;
-        let costs = state.service.get_cost_by_user(&start, &end).await;
+        let costs = state.service.get_cost_by_user(start, end).await;
 
         Html(pages::users::render_index(
             &state.base_path,
@@ -287,7 +267,7 @@ pub async fn users(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(&start, &end).await;
+        let costs = state.service.get_cost_by_user(start, end).await;
         let costs: Vec<_> = if let Some(ref uid) = current_user_id {
             costs.into_iter().filter(|c| c.user_id == *uid).collect()
         } else {
@@ -331,7 +311,7 @@ pub async fn models(
     #[cfg(feature = "admin")]
     {
         let models_enriched = state.service.list_models_enriched().await;
-        let costs = state.service.get_cost_by_model(&start, &end).await;
+        let costs = state.service.get_cost_by_model(start, end).await;
 
         Html(pages::models::render_index(
             &state.base_path,
@@ -349,7 +329,7 @@ pub async fn models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(&start, &end, uid)
+                .get_cost_by_model_for_user(start, end, uid)
                 .await
         } else {
             vec![]
@@ -441,7 +421,7 @@ pub async fn user_daily_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_daily_cost_for_user(&start, &end, &user_id)
+        .get_daily_cost_for_user(start, end, &user_id)
         .await;
 
     Html(pages::users::render_daily_costs(
@@ -484,7 +464,7 @@ pub async fn user_monthly_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_monthly_cost_for_user(&snap_to_month_start(&start), &end, &user_id)
+        .get_monthly_cost_for_user(snap_to_month_start(start), end, &user_id)
         .await;
 
     Html(pages::users::render_monthly_costs(
@@ -554,7 +534,7 @@ pub async fn model_daily_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_daily_cost_for_model(&start, &end, &model_id)
+        .get_daily_cost_for_model(start, end, &model_id)
         .await;
 
     Html(pages::models::render_daily_costs(
@@ -589,7 +569,7 @@ pub async fn model_monthly_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_monthly_cost_for_model(&snap_to_month_start(&start), &end, &model_id)
+        .get_monthly_cost_for_model(snap_to_month_start(start), end, &model_id)
         .await;
 
     Html(pages::models::render_monthly_costs(
@@ -617,17 +597,19 @@ pub async fn cost_date_detail(
     };
 
     let period = get_period(&params);
+    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive());
 
     #[cfg(feature = "admin")]
     {
-        let daily_cost = state.service.get_daily_cost(&date, &date).await;
+        let daily_cost = state.service.get_daily_cost(date_nd, date_nd).await;
         let total_cost: f64 = daily_cost.iter().map(|r| r.amount).sum();
         let currency = daily_cost
             .first()
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
-        let users = state.service.get_cost_by_user(&date, &date).await;
-        let models = state.service.get_cost_by_model(&date, &date).await;
+        let users = state.service.get_cost_by_user(date_nd, date_nd).await;
+        let models = state.service.get_cost_by_model(date_nd, date_nd).await;
 
         Html(pages::costs::render_hub(
             &state.base_path,
@@ -645,7 +627,7 @@ pub async fn cost_date_detail(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(&date, &date, uid).await
+            state.service.get_daily_cost_for_user(date_nd, date_nd, uid).await
         } else {
             vec![]
         };
@@ -655,7 +637,7 @@ pub async fn cost_date_detail(
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
         let users = if let Some(ref uid) = current_user_id {
-            let all = state.service.get_cost_by_user(&date, &date).await;
+            let all = state.service.get_cost_by_user(date_nd, date_nd).await;
             all.into_iter()
                 .filter(|c| c.user_id == *uid)
                 .collect::<Vec<_>>()
@@ -665,7 +647,7 @@ pub async fn cost_date_detail(
         let models = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(&date, &date, uid)
+                .get_cost_by_model_for_user(date_nd, date_nd, uid)
                 .await
         } else {
             vec![]
@@ -697,10 +679,12 @@ pub async fn cost_date_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive());
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_user(&date, &date).await;
+        let costs = state.service.get_cost_by_user(date_nd, date_nd).await;
 
         Html(pages::costs::render_users(
             &state.base_path,
@@ -715,7 +699,7 @@ pub async fn cost_date_users(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(&date, &date).await;
+        let costs = state.service.get_cost_by_user(date_nd, date_nd).await;
         let costs: Vec<_> = if let Some(ref uid) = current_user_id {
             costs.into_iter().filter(|c| c.user_id == *uid).collect()
         } else {
@@ -746,10 +730,12 @@ pub async fn cost_date_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive());
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_model(&date, &date).await;
+        let costs = state.service.get_cost_by_model(date_nd, date_nd).await;
 
         Html(pages::costs::render_models(
             &state.base_path,
@@ -767,7 +753,7 @@ pub async fn cost_date_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(&date, &date, uid)
+                .get_cost_by_model_for_user(date_nd, date_nd, uid)
                 .await
         } else {
             vec![]
@@ -797,6 +783,8 @@ pub async fn cost_date_user_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive());
     let user_email = state
         .service
         .get_user_email(&user_id)
@@ -804,7 +792,7 @@ pub async fn cost_date_user_models(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_model_for_user(&date, &date, &user_id)
+        .get_cost_by_model_for_user(date_nd, date_nd, &user_id)
         .await;
 
     Html(pages::costs::render_user_models(
@@ -831,6 +819,8 @@ pub async fn cost_date_model_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .unwrap_or_else(|_| Utc::now().date_naive());
     let model_name = state
         .service
         .get_model_name(&model_id)
@@ -838,7 +828,7 @@ pub async fn cost_date_model_users(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_user_for_model(&date, &date, &model_id)
+        .get_cost_by_user_for_model(date_nd, date_nd, &model_id)
         .await;
 
     Html(pages::costs::render_model_users(
@@ -870,7 +860,7 @@ pub async fn monthly_costs(
 
     #[cfg(feature = "admin")]
     {
-        let monthly_cost = state.service.get_monthly_cost(&snap_to_month_start(&start), &end).await;
+        let monthly_cost = state.service.get_monthly_cost(snap_to_month_start(start), end).await;
 
         Html(pages::monthly::render(
             &state.base_path,
@@ -885,7 +875,7 @@ pub async fn monthly_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let monthly_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_monthly_cost_for_user(&snap_to_month_start(&start), &end, uid).await
+            state.service.get_monthly_cost_for_user(snap_to_month_start(start), end, uid).await
         } else {
             vec![]
         };
@@ -916,14 +906,14 @@ pub async fn cost_month_detail(
 
     #[cfg(feature = "admin")]
     {
-        let daily_cost = state.service.get_daily_cost(&start, &end).await;
+        let daily_cost = state.service.get_daily_cost(start, end).await;
         let total_cost: f64 = daily_cost.iter().map(|r| r.amount).sum();
         let currency = daily_cost
             .first()
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
-        let users = state.service.get_cost_by_user(&start, &end).await;
-        let models = state.service.get_cost_by_model(&start, &end).await;
+        let users = state.service.get_cost_by_user(start, end).await;
+        let models = state.service.get_cost_by_model(start, end).await;
 
         Html(pages::monthly::render_hub(
             &state.base_path,
@@ -941,7 +931,7 @@ pub async fn cost_month_detail(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(&start, &end, uid).await
+            state.service.get_daily_cost_for_user(start, end, uid).await
         } else {
             vec![]
         };
@@ -951,7 +941,7 @@ pub async fn cost_month_detail(
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
         let users = if let Some(ref uid) = current_user_id {
-            let all = state.service.get_cost_by_user(&start, &end).await;
+            let all = state.service.get_cost_by_user(start, end).await;
             all.into_iter()
                 .filter(|c| c.user_id == *uid)
                 .collect::<Vec<_>>()
@@ -961,7 +951,7 @@ pub async fn cost_month_detail(
         let models = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(&start, &end, uid)
+                .get_cost_by_model_for_user(start, end, uid)
                 .await
         } else {
             vec![]
@@ -997,7 +987,7 @@ pub async fn cost_month_users(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_user(&start, &end).await;
+        let costs = state.service.get_cost_by_user(start, end).await;
 
         Html(pages::monthly::render_users(
             &state.base_path,
@@ -1012,7 +1002,7 @@ pub async fn cost_month_users(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(&start, &end).await;
+        let costs = state.service.get_cost_by_user(start, end).await;
         let costs: Vec<_> = if let Some(ref uid) = current_user_id {
             costs.into_iter().filter(|c| c.user_id == *uid).collect()
         } else {
@@ -1047,7 +1037,7 @@ pub async fn cost_month_models(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_model(&start, &end).await;
+        let costs = state.service.get_cost_by_model(start, end).await;
 
         Html(pages::monthly::render_models(
             &state.base_path,
@@ -1065,7 +1055,7 @@ pub async fn cost_month_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(&start, &end, uid)
+                .get_cost_by_model_for_user(start, end, uid)
                 .await
         } else {
             vec![]
@@ -1103,7 +1093,7 @@ pub async fn cost_month_user_models(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_model_for_user(&start, &end, &user_id)
+        .get_cost_by_model_for_user(start, end, &user_id)
         .await;
 
     Html(pages::monthly::render_user_models(
@@ -1138,7 +1128,7 @@ pub async fn cost_month_model_users(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_user_for_model(&start, &end, &model_id)
+        .get_cost_by_user_for_model(start, end, &model_id)
         .await;
 
     Html(pages::monthly::render_model_users(
@@ -1164,76 +1154,60 @@ mod tests {
     #[test]
     fn resolve_period_7d() {
         let (start, end) = resolve_period("7d");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 6);
+        assert_eq!((end - start).num_days(), 6);
     }
 
     #[test]
     fn resolve_period_30d() {
         let (start, end) = resolve_period("30d");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 29);
+        assert_eq!((end - start).num_days(), 29);
     }
 
     #[test]
     fn resolve_period_month() {
         let (start, end) = resolve_period("month");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        assert_eq!(s.day(), 1);
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!(s.month(), e.month());
+        assert_eq!(start.day(), 1);
+        assert_eq!(start.month(), end.month());
     }
 
     #[test]
     fn resolve_period_last_month() {
         let (start, end) = resolve_period("last_month");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!(s.day(), 1);
-        assert_eq!(s.month(), e.month());
+        assert_eq!(start.day(), 1);
+        assert_eq!(start.month(), end.month());
         // end should be last day of that month
         let next_month_first =
-            NaiveDate::from_ymd_opt(e.year(), e.month(), 1).unwrap() + chrono::Duration::days(31);
+            NaiveDate::from_ymd_opt(end.year(), end.month(), 1).unwrap() + chrono::Duration::days(31);
         let last_day =
             NaiveDate::from_ymd_opt(next_month_first.year(), next_month_first.month(), 1).unwrap()
                 - chrono::Duration::days(1);
         // The end should be within that month
-        assert!(e.day() >= 28);
-        assert_eq!(e, last_day);
+        assert!(end.day() >= 28);
+        assert_eq!(end, last_day);
     }
 
     #[test]
     fn resolve_period_3m() {
         let (start, end) = resolve_period("3m");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 90);
+        assert_eq!((end - start).num_days(), 90);
     }
 
     #[test]
     fn resolve_period_6m() {
         let (start, end) = resolve_period("6m");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 180);
+        assert_eq!((end - start).num_days(), 180);
     }
 
     #[test]
     fn resolve_period_12m() {
         let (start, end) = resolve_period("12m");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 365);
+        assert_eq!((end - start).num_days(), 365);
     }
 
     #[test]
     fn resolve_period_default() {
         let (start, end) = resolve_period("unknown");
-        let s = NaiveDate::parse_from_str(&start, "%Y-%m-%d").unwrap();
-        let e = NaiveDate::parse_from_str(&end, "%Y-%m-%d").unwrap();
-        assert_eq!((e - s).num_days(), 29);
+        assert_eq!((end - start).num_days(), 29);
     }
 
     #[test]
@@ -1257,28 +1231,28 @@ mod tests {
     #[test]
     fn month_to_range_january() {
         let (start, end) = month_to_range("2024-01");
-        assert_eq!(start, "2024-01-01");
-        assert_eq!(end, "2024-01-31");
+        assert_eq!(start.to_string(), "2024-01-01");
+        assert_eq!(end.to_string(), "2024-01-31");
     }
 
     #[test]
     fn month_to_range_february_leap() {
         let (start, end) = month_to_range("2024-02");
-        assert_eq!(start, "2024-02-01");
-        assert_eq!(end, "2024-02-29");
+        assert_eq!(start.to_string(), "2024-02-01");
+        assert_eq!(end.to_string(), "2024-02-29");
     }
 
     #[test]
     fn month_to_range_february_non_leap() {
         let (start, end) = month_to_range("2023-02");
-        assert_eq!(start, "2023-02-01");
-        assert_eq!(end, "2023-02-28");
+        assert_eq!(start.to_string(), "2023-02-01");
+        assert_eq!(end.to_string(), "2023-02-28");
     }
 
     #[test]
     fn month_to_range_december() {
         let (start, end) = month_to_range("2024-12");
-        assert_eq!(start, "2024-12-01");
-        assert_eq!(end, "2024-12-31");
+        assert_eq!(start.to_string(), "2024-12-01");
+        assert_eq!(end.to_string(), "2024-12-31");
     }
 }

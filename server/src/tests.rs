@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum::body::Body;
+use chrono::NaiveDate;
 use common::{CostByModel, CostByUser, CostRecord, ModelInfo, UserInfo};
 use http_body_util::BodyExt;
 use std::sync::Arc;
@@ -42,11 +43,11 @@ impl MockCostService {
 
 #[async_trait]
 impl CostService for MockCostService {
-    async fn get_daily_cost(&self, _start: &str, _end: &str) -> Vec<CostRecord> {
+    async fn get_daily_cost(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostRecord> {
         self.daily.clone()
     }
 
-    async fn get_monthly_cost(&self, _start: &str, _end: &str) -> Vec<CostRecord> {
+    async fn get_monthly_cost(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostRecord> {
         vec![CostRecord {
             date: "2024-01-01".to_string(),
             amount: 500.0,
@@ -54,18 +55,18 @@ impl CostService for MockCostService {
         }]
     }
 
-    async fn get_cost_by_user(&self, _start: &str, _end: &str) -> Vec<CostByUser> {
+    async fn get_cost_by_user(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByUser> {
         self.users.clone()
     }
 
-    async fn get_cost_by_model(&self, _start: &str, _end: &str) -> Vec<CostByModel> {
+    async fn get_cost_by_model(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByModel> {
         self.models.clone()
     }
 
     async fn get_cost_by_model_for_user(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _user_id: &str,
     ) -> Vec<CostByModel> {
         self.models.clone()
@@ -73,8 +74,8 @@ impl CostService for MockCostService {
 
     async fn get_cost_by_user_for_model(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _model_id: &str,
     ) -> Vec<CostByUser> {
         self.users.clone()
@@ -82,8 +83,8 @@ impl CostService for MockCostService {
 
     async fn get_daily_cost_for_user(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _user_id: &str,
     ) -> Vec<CostRecord> {
         self.daily.clone()
@@ -91,8 +92,8 @@ impl CostService for MockCostService {
 
     async fn get_monthly_cost_for_user(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _user_id: &str,
     ) -> Vec<CostRecord> {
         self.daily.clone()
@@ -100,8 +101,8 @@ impl CostService for MockCostService {
 
     async fn get_daily_cost_for_model(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _model_id: &str,
     ) -> Vec<CostRecord> {
         self.daily.clone()
@@ -109,8 +110,8 @@ impl CostService for MockCostService {
 
     async fn get_monthly_cost_for_model(
         &self,
-        _start: &str,
-        _end: &str,
+        _start: NaiveDate,
+        _end: NaiveDate,
         _model_id: &str,
     ) -> Vec<CostRecord> {
         self.daily.clone()

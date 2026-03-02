@@ -1,3 +1,3 @@
 [workspace]
-members = ["common", "db", "ce", "myerrors", "myhandlers", "server", "templates"]
+members = ["common", "db", "ce", "myerrors", "myhandlers", "server", "templates", "batch"]
 resolver = "2"
