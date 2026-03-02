@@ -14,6 +14,7 @@
   mkImage = {
     name,
     package,
+    extraPaths ? [],
   }:
     pkgs.dockerTools.buildImage {
       inherit name;
@@ -25,7 +26,7 @@
         name = "image-root";
         paths = [
           pkgs.dockerTools.caCertificates
-        ];
+        ] ++ extraPaths;
       };
     };
 
@@ -45,5 +46,6 @@ in {
   admin = mkImage {
     name = "cost-admin";
     package = adminPackage;
+    extraPaths = [ adminPackage ];
   };
 }
