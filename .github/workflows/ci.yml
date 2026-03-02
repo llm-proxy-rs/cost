@@ -46,3 +46,25 @@ jobs:
           docker load < result
           docker tag cost-admin:latest ghcr.io/llm-proxy-rs/cost-admin:latest
           docker push ghcr.io/llm-proxy-rs/cost-admin:latest
+
+  build-batch:
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix-build -A batch
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          docker load < result
+          docker tag cost-batch:latest ghcr.io/llm-proxy-rs/cost-batch:latest
+          docker push ghcr.io/llm-proxy-rs/cost-batch:latest
