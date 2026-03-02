@@ -13,7 +13,6 @@ db = { path = "../db" }
 ce = { path = "../ce" }
 tokio = { version = "1.49.0", features = ["full"] }
 chrono = "0.4.44"
-clap = { version = "4.5.60", features = ["derive"] }
 anyhow = "1.0.102"
 env_logger = "0.11.9"
 log = "0.4.29"

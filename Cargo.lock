@@ -667,7 +667,6 @@ dependencies = [
  "anyhow",
  "ce",
  "chrono",
- "clap",
  "common",
  "config",
  "db",

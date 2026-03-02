@@ -14,38 +14,50 @@
   mkImage = {
     name,
     package,
-    extraPaths ? [],
+    entrypoint,
   }:
     pkgs.dockerTools.buildImage {
       inherit name;
       tag = "latest";
       config = {
-        Entrypoint = ["${package}/bin/server"];
+        Entrypoint = ["${package}/bin/${entrypoint}"];
       };
       copyToRoot = pkgs.buildEnv {
         name = "image-root";
         paths = [
           pkgs.dockerTools.caCertificates
-        ] ++ extraPaths;
+        ];
       };
     };
 
   package = mkPackage {
     pname = "cost";
+    cargoBuildFlags = ["--bin" "server"];
   };
 
   adminPackage = mkPackage {
     pname = "cost-admin";
-    cargoBuildFlags = ["--features" "admin"];
+    cargoBuildFlags = ["--bin" "server" "--features" "admin"];
+  };
+
+  batchPackage = mkPackage {
+    pname = "cost-batch";
+    cargoBuildFlags = ["--bin" "batch"];
   };
 in {
   default = mkImage {
     name = "cost";
     package = package;
+    entrypoint = "server";
   };
   admin = mkImage {
     name = "cost-admin";
     package = adminPackage;
-    extraPaths = [ adminPackage ];
+    entrypoint = "server";
+  };
+  batch = mkImage {
+    name = "cost-batch";
+    package = batchPackage;
+    entrypoint = "batch";
   };
 }
