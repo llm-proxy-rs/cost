@@ -1,0 +1,10 @@
+# Database Configuration
+database_url_cost = "postgres://postgres:postgres@localhost/cost"
+database_url_gateway_ro = "postgres://postgres:postgres@localhost/gateway"
+
+# Incremental lookback (default: 3 days)
+# incremental_days = 3
+
+# Custom date range (overrides incremental_days)
+# start = "2025-01-01"
+# end = "2025-06-01"

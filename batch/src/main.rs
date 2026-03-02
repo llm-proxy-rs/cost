@@ -1,36 +1,37 @@
 use anyhow::Result;
 use chrono::{NaiveDate, Utc};
-use clap::Parser;
 use serde::Deserialize;
-
-#[derive(Parser)]
-#[command(name = "cost-batch")]
-struct Args {
-    #[arg(long, default_value = "config")]
-    config_file: String,
-
-    #[arg(long)]
-    backfill: bool,
-
-    #[arg(long)]
-    start: Option<String>,
-
-    #[arg(long)]
-    end: Option<String>,
-}
 
 #[derive(Deserialize)]
 struct BatchConfig {
+    #[serde(default = "default_database_url_cost")]
     database_url_cost: String,
+    #[serde(default = "default_database_url_gateway_ro")]
     database_url_gateway_ro: String,
+    #[serde(default = "default_incremental_days")]
+    incremental_days: i64,
+    start: Option<String>,
+    end: Option<String>,
 }
 
-fn load_config(config_file: &str) -> Result<BatchConfig> {
-    let settings = config::Config::builder()
-        .add_source(config::File::with_name(config_file).required(false))
+fn default_database_url_cost() -> String {
+    "postgres://postgres:postgres@localhost/cost".to_string()
+}
+
+fn default_database_url_gateway_ro() -> String {
+    "postgres://postgres:postgres@localhost/gateway".to_string()
+}
+
+fn default_incremental_days() -> i64 {
+    3
+}
+
+fn load_config() -> Result<BatchConfig> {
+    let cfg: BatchConfig = config::Config::builder()
+        .add_source(config::File::with_name("config").required(false))
         .add_source(config::Environment::default())
-        .build()?;
-    let cfg: BatchConfig = settings.try_deserialize()?;
+        .build()?
+        .try_deserialize()?;
     Ok(cfg)
 }
 
@@ -38,25 +39,17 @@ fn load_config(config_file: &str) -> Result<BatchConfig> {
 async fn main() -> Result<()> {
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("batch=info"));
 
-    let args = Args::parse();
-    let cfg = load_config(&args.config_file)?;
+    let cfg = load_config()?;
 
     let today = Utc::now().date_naive();
 
-    let (start, end) = if let (Some(s), Some(e)) = (&args.start, &args.end) {
-        // Validate date format
+    let (start, end) = if let (Some(s), Some(e)) = (&cfg.start, &cfg.end) {
         let _ = NaiveDate::parse_from_str(s, "%Y-%m-%d")?;
         let _ = NaiveDate::parse_from_str(e, "%Y-%m-%d")?;
         (s.clone(), e.clone())
-    } else if args.backfill {
-        let start_date = today - chrono::Months::new(14);
-        (
-            start_date.format("%Y-%m-%d").to_string(),
-            today.format("%Y-%m-%d").to_string(),
-        )
     } else {
         // Incremental: last 3 days
-        let start_date = today - chrono::Duration::days(3);
+        let start_date = today - chrono::Duration::days(cfg.incremental_days);
         (
             start_date.format("%Y-%m-%d").to_string(),
             today.format("%Y-%m-%d").to_string(),
