@@ -43,6 +43,10 @@ impl MockCostService {
 
 #[async_trait]
 impl CostService for MockCostService {
+    async fn health_check(&self) -> Result<(), String> {
+        Ok(())
+    }
+
     async fn get_daily_cost(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostRecord> {
         self.daily.clone()
     }
