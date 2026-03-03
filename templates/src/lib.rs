@@ -151,10 +151,9 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
   }});
   // Append sort params to pagination and period links
   if(curSort!==null){{
-    var suffix='&sort='+curSort+'&order='+curOrder;
-    document.querySelectorAll('.pagination a, .info-row a').forEach(function(a){{
+    document.querySelectorAll('a[href]').forEach(function(a){{
       var h=a.getAttribute('href');
-      if(h&&h.indexOf('sort=')===-1)a.setAttribute('href',h+(h.indexOf('?')!==-1?'&':'?')+'sort='+curSort+'&order='+curOrder);
+      if(h&&h.indexOf('sort=')===-1&&h.indexOf('?')!==-1)a.setAttribute('href',h+'&sort='+curSort+'&order='+curOrder);
     }});
   }}
 }})();
