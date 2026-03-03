@@ -13,6 +13,16 @@ use tower_sessions::Session;
 use crate::pages;
 use crate::service::CostService;
 
+pub async fn health_check(State(state): State<AppState>) -> Response {
+    match state.service.health_check().await {
+        Ok(()) => (axum::http::StatusCode::OK, "ok").into_response(),
+        Err(e) => {
+            log::error!("Health check failed: {e}");
+            (axum::http::StatusCode::SERVICE_UNAVAILABLE, format!("error: {e}")).into_response()
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<dyn CostService>,
@@ -29,6 +39,8 @@ pub struct AppState {
 pub struct PeriodParams {
     pub period: Option<String>,
     pub page: Option<usize>,
+    pub sort: Option<usize>,
+    pub order: Option<String>,
 }
 
 fn resolve_period(period: &str) -> (NaiveDate, NaiveDate) {
@@ -82,6 +94,18 @@ fn get_period(params: &PeriodParams) -> String {
 
 fn get_page(params: &PeriodParams) -> usize {
     params.page.unwrap_or(1).max(1)
+}
+
+fn get_sort(params: &PeriodParams) -> Option<usize> {
+    params.sort
+}
+
+fn get_order(params: &PeriodParams) -> String {
+    params
+        .order
+        .as_deref()
+        .unwrap_or("asc")
+        .to_string()
 }
 
 fn parse_month_range(month: &str) -> (NaiveDate, NaiveDate) {
@@ -204,11 +228,14 @@ pub async fn render_daily_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
     #[cfg(feature = "admin")]
     {
         let daily_cost = state.service.get_daily_cost(start, end).await;
+        let daily_cost = pages::sort_records(daily_cost, sort, &order);
 
         Html(pages::costs::render(
             &state.base_path,
@@ -227,6 +254,7 @@ pub async fn render_daily_costs(
         } else {
             vec![]
         };
+        let daily_cost = pages::sort_records(daily_cost, sort, &order);
 
         Html(pages::costs::render(
             &state.base_path,
@@ -250,6 +278,8 @@ pub async fn render_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
     #[cfg(feature = "admin")]
@@ -263,6 +293,8 @@ pub async fn render_users(
             page,
             &users_enriched,
             &costs,
+            sort,
+            &order,
         ))
         .into_response()
     }
@@ -292,6 +324,8 @@ pub async fn render_users(
             page,
             &users_enriched,
             &costs,
+            sort,
+            &order,
         ))
         .into_response()
     }
@@ -309,6 +343,8 @@ pub async fn render_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
     #[cfg(feature = "admin")]
@@ -322,6 +358,8 @@ pub async fn render_models(
             page,
             &models_enriched,
             &costs,
+            sort,
+            &order,
         ))
         .into_response()
     }
@@ -358,6 +396,8 @@ pub async fn render_models(
             page,
             &models_enriched,
             &costs,
+            sort,
+            &order,
         ))
         .into_response()
     }
@@ -429,6 +469,8 @@ pub async fn render_user_daily_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
     let user_email = state
         .service
@@ -439,6 +481,7 @@ pub async fn render_user_daily_costs(
         .service
         .get_daily_cost_for_user(start, end, &user_id)
         .await;
+    let costs = pages::sort_records(costs, sort, &order);
 
     Html(pages::users::render_daily_costs(
         &state.base_path,
@@ -472,6 +515,8 @@ pub async fn render_user_monthly_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
     let user_email = state
         .service
@@ -482,6 +527,7 @@ pub async fn render_user_monthly_costs(
         .service
         .get_monthly_cost_for_user(snap_to_month_start(start), end, &user_id)
         .await;
+    let costs = pages::sort_records(costs, sort, &order);
 
     Html(pages::users::render_monthly_costs(
         &state.base_path,
@@ -565,6 +611,8 @@ pub async fn render_model_daily_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
     let model_name = state
         .service
@@ -591,6 +639,8 @@ pub async fn render_model_daily_costs(
         }
     };
 
+    let costs = pages::sort_records(costs, sort, &order);
+
     Html(pages::models::render_daily_costs(
         &state.base_path,
         &period,
@@ -615,6 +665,8 @@ pub async fn render_model_monthly_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
     let model_name = state
         .service
@@ -640,6 +692,8 @@ pub async fn render_model_monthly_costs(
             vec![]
         }
     };
+
+    let costs = pages::sort_records(costs, sort, &order);
 
     Html(pages::models::render_monthly_costs(
         &state.base_path,
@@ -668,17 +722,18 @@ pub async fn render_date_hub(
     let period = get_period(&params);
     let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .unwrap_or_else(|_| Utc::now().date_naive());
+    let next_day = date_nd + chrono::Duration::days(1);
 
     #[cfg(feature = "admin")]
     {
-        let daily_cost = state.service.get_daily_cost(date_nd, date_nd).await;
+        let daily_cost = state.service.get_daily_cost(date_nd, next_day).await;
         let total_cost: f64 = daily_cost.iter().map(|r| r.amount).sum();
         let currency = daily_cost
             .first()
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
-        let users = state.service.get_cost_by_user(date_nd, date_nd).await;
-        let models = state.service.get_cost_by_model(date_nd, date_nd).await;
+        let users = state.service.get_cost_by_user(date_nd, next_day).await;
+        let models = state.service.get_cost_by_model(date_nd, next_day).await;
 
         Html(pages::costs::render_hub(
             &state.base_path,
@@ -696,7 +751,7 @@ pub async fn render_date_hub(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(date_nd, date_nd, uid).await
+            state.service.get_daily_cost_for_user(date_nd, next_day, uid).await
         } else {
             vec![]
         };
@@ -706,7 +761,7 @@ pub async fn render_date_hub(
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
         let users = if let Some(ref uid) = current_user_id {
-            let all = state.service.get_cost_by_user(date_nd, date_nd).await;
+            let all = state.service.get_cost_by_user(date_nd, next_day).await;
             all.into_iter()
                 .filter(|c| c.user_id == *uid)
                 .collect::<Vec<_>>()
@@ -716,7 +771,7 @@ pub async fn render_date_hub(
         let models = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(date_nd, date_nd, uid)
+                .get_cost_by_model_for_user(date_nd, next_day, uid)
                 .await
         } else {
             vec![]
@@ -748,12 +803,16 @@ pub async fn render_date_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .unwrap_or_else(|_| Utc::now().date_naive());
+    let next_day = date_nd + chrono::Duration::days(1);
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_user(date_nd, date_nd).await;
+        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
+        let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::costs::render_users(
             &state.base_path,
@@ -768,12 +827,13 @@ pub async fn render_date_users(
     #[cfg(not(feature = "admin"))]
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(date_nd, date_nd).await;
+        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
         let costs: Vec<_> = if let Some(ref uid) = current_user_id {
             costs.into_iter().filter(|c| c.user_id == *uid).collect()
         } else {
             costs
         };
+        let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::costs::render_users(
             &state.base_path,
@@ -799,12 +859,16 @@ pub async fn render_date_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .unwrap_or_else(|_| Utc::now().date_naive());
+    let next_day = date_nd + chrono::Duration::days(1);
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_model(date_nd, date_nd).await;
+        let costs = state.service.get_cost_by_model(date_nd, next_day).await;
+        let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::costs::render_models(
             &state.base_path,
@@ -822,11 +886,12 @@ pub async fn render_date_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(date_nd, date_nd, uid)
+                .get_cost_by_model_for_user(date_nd, next_day, uid)
                 .await
         } else {
             vec![]
         };
+        let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::costs::render_models(
             &state.base_path,
@@ -860,8 +925,11 @@ pub async fn render_date_models_for_user(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .unwrap_or_else(|_| Utc::now().date_naive());
+    let next_day = date_nd + chrono::Duration::days(1);
     let user_email = state
         .service
         .get_user_email(&user_id)
@@ -869,8 +937,9 @@ pub async fn render_date_models_for_user(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_model_for_user(date_nd, date_nd, &user_id)
+        .get_cost_by_model_for_user(date_nd, next_day, &user_id)
         .await;
+    let costs = pages::sort_by_model(costs, sort, &order);
 
     Html(pages::costs::render_user_models(
         &state.base_path,
@@ -896,8 +965,11 @@ pub async fn render_date_users_for_model(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
         .unwrap_or_else(|_| Utc::now().date_naive());
+    let next_day = date_nd + chrono::Duration::days(1);
     let model_name = state
         .service
         .get_model_name(&model_id)
@@ -907,7 +979,7 @@ pub async fn render_date_users_for_model(
     #[cfg(feature = "admin")]
     let costs = state
         .service
-        .get_cost_by_user_for_model(date_nd, date_nd, &model_id)
+        .get_cost_by_user_for_model(date_nd, next_day, &model_id)
         .await;
 
     #[cfg(not(feature = "admin"))]
@@ -915,7 +987,7 @@ pub async fn render_date_users_for_model(
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let all = state
             .service
-            .get_cost_by_user_for_model(date_nd, date_nd, &model_id)
+            .get_cost_by_user_for_model(date_nd, next_day, &model_id)
             .await;
         if let Some(ref uid) = current_user_id {
             all.into_iter().filter(|c| c.user_id == *uid).collect()
@@ -923,6 +995,8 @@ pub async fn render_date_users_for_model(
             vec![]
         }
     };
+
+    let costs = pages::sort_by_user(costs, sort, &order);
 
     Html(pages::costs::render_model_users(
         &state.base_path,
@@ -949,11 +1023,14 @@ pub async fn render_monthly_costs(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
     #[cfg(feature = "admin")]
     {
         let monthly_cost = state.service.get_monthly_cost(snap_to_month_start(start), end).await;
+        let monthly_cost = pages::sort_records(monthly_cost, sort, &order);
 
         Html(pages::monthly::render(
             &state.base_path,
@@ -972,6 +1049,7 @@ pub async fn render_monthly_costs(
         } else {
             vec![]
         };
+        let monthly_cost = pages::sort_records(monthly_cost, sort, &order);
 
         Html(pages::monthly::render(
             &state.base_path,
@@ -1076,11 +1154,14 @@ pub async fn render_month_users(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = parse_month_range(&month);
 
     #[cfg(feature = "admin")]
     {
         let costs = state.service.get_cost_by_user(start, end).await;
+        let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::monthly::render_users(
             &state.base_path,
@@ -1101,6 +1182,7 @@ pub async fn render_month_users(
         } else {
             costs
         };
+        let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::monthly::render_users(
             &state.base_path,
@@ -1126,11 +1208,14 @@ pub async fn render_month_models(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = parse_month_range(&month);
 
     #[cfg(feature = "admin")]
     {
         let costs = state.service.get_cost_by_model(start, end).await;
+        let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::monthly::render_models(
             &state.base_path,
@@ -1153,6 +1238,7 @@ pub async fn render_month_models(
         } else {
             vec![]
         };
+        let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::monthly::render_models(
             &state.base_path,
@@ -1186,6 +1272,8 @@ pub async fn render_month_models_for_user(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = parse_month_range(&month);
     let user_email = state
         .service
@@ -1196,6 +1284,7 @@ pub async fn render_month_models_for_user(
         .service
         .get_cost_by_model_for_user(start, end, &user_id)
         .await;
+    let costs = pages::sort_by_model(costs, sort, &order);
 
     Html(pages::monthly::render_user_models(
         &state.base_path,
@@ -1221,6 +1310,8 @@ pub async fn render_month_users_for_model(
 
     let period = get_period(&params);
     let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
     let (start, end) = parse_month_range(&month);
     let model_name = state
         .service
@@ -1247,6 +1338,8 @@ pub async fn render_month_users_for_model(
             vec![]
         }
     };
+
+    let costs = pages::sort_by_user(costs, sort, &order);
 
     Html(pages::monthly::render_model_users(
         &state.base_path,
@@ -1327,6 +1420,8 @@ mod tests {
         let params = PeriodParams {
             period: None,
             page: None,
+            sort: None,
+            order: None,
         };
         assert_eq!(get_period(&params), "30d");
     }
@@ -1336,6 +1431,8 @@ mod tests {
         let params = PeriodParams {
             period: Some("7d".to_string()),
             page: None,
+            sort: None,
+            order: None,
         };
         assert_eq!(get_period(&params), "7d");
     }

@@ -36,6 +36,10 @@ pub fn build_router(state: AppState) -> Router {
         cognito_user_pool_id: state.cognito_user_pool_id.clone(),
     };
 
+    let health_route = Router::new()
+        .route("/health", get(handlers::health_check))
+        .with_state(state.clone());
+
     let cost_routes = Router::new()
         .route("/", get(handlers::render_home))
         .route("/costs/daily", get(handlers::render_daily_costs))
@@ -92,6 +96,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/login", get(login))
         .route("/logout", get(logout))
         .with_state(auth_state)
+        .merge(health_route)
         .merge(cost_routes)
 }
 

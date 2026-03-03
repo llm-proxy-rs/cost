@@ -10,6 +10,8 @@ pub fn render_index(
     page: usize,
     users: &[UserInfo],
     costs: &[CostByUser],
+    sort: Option<usize>,
+    order: &str,
 ) -> String {
     let users = users.to_vec();
     let costs = costs.to_vec();
@@ -69,6 +71,20 @@ pub fn render_index(
     }
 
     let total_rows = rows.len();
+    // Sort rows before paginating
+    if let Some(col) = sort {
+        let desc = order == "desc";
+        rows.sort_by(|a, b| {
+            let cmp = match col {
+                0 => a.display.cmp(&b.display),
+                1 => a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal),
+                2 => a.api_keys.cmp(&b.api_keys),
+                3 => a.profiles.cmp(&b.profiles),
+                _ => std::cmp::Ordering::Equal,
+            };
+            if desc { cmp.reverse() } else { cmp }
+        });
+    }
     let total_pages = if total_rows == 0 {
         1
     } else {
@@ -336,7 +352,7 @@ mod tests {
 
     #[test]
     fn render_index_empty() {
-        let html = render_index("/", "30d", 1, &[], &[]);
+        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
         assert!(html.contains("No users found."));
         assert!(html.contains("Cost Explorer - Users"));
     }
@@ -357,7 +373,7 @@ mod tests {
             amount: 50.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index("/", "30d", 1, &users, &costs);
+        let html = render_index("/", "30d", 1, &users, &costs, None, "asc");
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("50.00 USD"));
         assert!(html.contains("2/3")); // active/total api keys
@@ -366,7 +382,7 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index("/", "30d", 1, &[], &[]);
+        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -381,7 +397,7 @@ mod tests {
             active_api_key_count: 1,
             inference_profile_count: 0,
         }];
-        let html = render_index("/_dashboard", "30d", 1, &users, &[]);
+        let html = render_index("/_dashboard", "30d", 1, &users, &[], None, "asc");
         assert!(html.contains("/_dashboard/users/abc-123"));
     }
 

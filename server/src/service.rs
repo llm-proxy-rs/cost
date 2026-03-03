@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait CostService: Send + Sync {
+    async fn health_check(&self) -> Result<(), String>;
     async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
     async fn get_monthly_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
     async fn get_cost_by_user(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser>;
@@ -78,6 +79,18 @@ pub struct RealCostService {
 
 #[async_trait]
 impl CostService for RealCostService {
+    async fn health_check(&self) -> Result<(), String> {
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| format!("gateway db: {e}"))?;
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&self.cost_pool)
+            .await
+            .map_err(|e| format!("cost db: {e}"))?;
+        Ok(())
+    }
+
     async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord> {
         db::get_daily_cost(&self.cost_pool, start, end)
             .await

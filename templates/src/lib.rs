@@ -102,10 +102,11 @@ pub fn page_layout(title: &str, body_html: String) -> String {
 <style>
 body {{ font-family: monospace; padding: 16px; }}
 table {{ width: 100%; border-collapse: collapse; }}
-th {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; cursor: pointer; user-select: none; }}
-th:after {{ content: ' \2195 '; color: #ccc; }}
-th.sort-asc:after {{ content: ' \25B2 '; color: #333; }}
-th.sort-desc:after {{ content: ' \25BC '; color: #333; }}
+th {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; }}
+table.data-table th {{ cursor: pointer; user-select: none; }}
+table.data-table th:after {{ content: ' \2195 '; color: #ccc; }}
+table.data-table th.sort-asc:after {{ content: ' \25B2 '; color: #333; }}
+table.data-table th.sort-desc:after {{ content: ' \25BC '; color: #333; }}
 td {{ padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }}
 tr:last-child td {{ border-bottom: none; }}
 pre {{ white-space: pre-wrap; }}
@@ -128,24 +129,34 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
 {body_html}
 <script>
 (function(){{
-  document.querySelectorAll('th').forEach(function(th){{
-    th.addEventListener('click',function(){{
-      var table=th.closest('table'),idx=Array.prototype.indexOf.call(th.parentNode.children,th);
-      var rows=Array.from(table.querySelectorAll('tr')).slice(1);
-      if(!rows.length)return;
-      var asc=!th.classList.contains('sort-asc');
-      table.querySelectorAll('th').forEach(function(h){{h.classList.remove('sort-asc','sort-desc');}});
-      th.classList.add(asc?'sort-asc':'sort-desc');
-      rows.sort(function(a,b){{
-        var at=(a.children[idx]||{{}}).textContent||'';
-        var bt=(b.children[idx]||{{}}).textContent||'';
-        var an=parseFloat(at),bn=parseFloat(bt);
-        var r=(!isNaN(an)&&!isNaN(bn))?an-bn:at.localeCompare(bt);
-        return asc?r:-r;
+  var params=new URLSearchParams(window.location.search);
+  var curSort=params.get('sort');
+  var curOrder=params.get('order')||'asc';
+  // Mark sorted column header
+  document.querySelectorAll('table.data-table').forEach(function(table){{
+    var ths=table.querySelectorAll('tr:first-child th');
+    if(curSort!==null){{
+      var idx=parseInt(curSort,10);
+      if(ths[idx])ths[idx].classList.add(curOrder==='desc'?'sort-desc':'sort-asc');
+    }}
+    // Click handler: navigate with sort params
+    ths.forEach(function(th,i){{
+      th.addEventListener('click',function(){{
+        var p=new URLSearchParams(window.location.search);
+        var newOrder=(p.get('sort')===String(i)&&p.get('order')!=='desc')?'desc':'asc';
+        p.set('sort',i);p.set('order',newOrder);p.set('page','1');
+        window.location.search=p.toString();
       }});
-      rows.forEach(function(r){{table.appendChild(r);}});
     }});
   }});
+  // Append sort params to pagination and period links
+  if(curSort!==null){{
+    var suffix='&sort='+curSort+'&order='+curOrder;
+    document.querySelectorAll('.pagination a, .info-row a').forEach(function(a){{
+      var h=a.getAttribute('href');
+      if(h&&h.indexOf('sort=')===-1)a.setAttribute('href',h+(h.indexOf('?')!==-1?'&':'?')+'sort='+curSort+'&order='+curOrder);
+    }});
+  }}
 }})();
 (function(){{
   function exportCsv(table){{

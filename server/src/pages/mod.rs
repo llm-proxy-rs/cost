@@ -6,6 +6,58 @@ pub mod users;
 
 pub const PAGE_SIZE: usize = 50;
 
+use common::{CostByModel, CostByUser, CostRecord};
+
+pub fn sort_records(mut records: Vec<CostRecord>, sort: Option<usize>, order: &str) -> Vec<CostRecord> {
+    let Some(col) = sort else { return records };
+    let desc = order == "desc";
+    records.sort_by(|a, b| {
+        let cmp = match col {
+            0 => a.date.cmp(&b.date),
+            1 => a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal),
+            _ => std::cmp::Ordering::Equal,
+        };
+        if desc { cmp.reverse() } else { cmp }
+    });
+    records
+}
+
+pub fn sort_by_user(mut costs: Vec<CostByUser>, sort: Option<usize>, order: &str) -> Vec<CostByUser> {
+    let Some(col) = sort else { return costs };
+    let desc = order == "desc";
+    costs.sort_by(|a, b| {
+        let cmp = match col {
+            0 => {
+                let ae = a.user_email.as_deref().unwrap_or(&a.user_id);
+                let be = b.user_email.as_deref().unwrap_or(&b.user_id);
+                ae.cmp(be)
+            }
+            1 => a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal),
+            _ => std::cmp::Ordering::Equal,
+        };
+        if desc { cmp.reverse() } else { cmp }
+    });
+    costs
+}
+
+pub fn sort_by_model(mut costs: Vec<CostByModel>, sort: Option<usize>, order: &str) -> Vec<CostByModel> {
+    let Some(col) = sort else { return costs };
+    let desc = order == "desc";
+    costs.sort_by(|a, b| {
+        let cmp = match col {
+            0 => {
+                let an = a.model_name.as_deref().unwrap_or(&a.model_id);
+                let bn = b.model_name.as_deref().unwrap_or(&b.model_id);
+                an.cmp(bn)
+            }
+            1 => a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal),
+            _ => std::cmp::Ordering::Equal,
+        };
+        if desc { cmp.reverse() } else { cmp }
+    });
+    costs
+}
+
 pub fn with_period(path: &str, period: &str) -> String {
     if period == "30d" {
         path.to_string()

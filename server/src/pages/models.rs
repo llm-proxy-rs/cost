@@ -10,6 +10,8 @@ pub fn render_index(
     page: usize,
     models: &[ModelInfo],
     costs: &[CostByModel],
+    sort: Option<usize>,
+    order: &str,
 ) -> String {
     let models = models.to_vec();
     let costs = costs.to_vec();
@@ -75,6 +77,21 @@ pub fn render_index(
     }
 
     let total_rows = rows.len();
+    // Sort rows before paginating
+    if let Some(col) = sort {
+        let desc = order == "desc";
+        rows.sort_by(|a, b| {
+            let cmp = match col {
+                0 => a.display.cmp(&b.display),
+                1 => a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal),
+                2 => a.status.cmp(&b.status),
+                3 => a.protected.cmp(&b.protected),
+                4 => a.user_count.cmp(&b.user_count),
+                _ => std::cmp::Ordering::Equal,
+            };
+            if desc { cmp.reverse() } else { cmp }
+        });
+    }
     let total_pages = if total_rows == 0 {
         1
     } else {
@@ -356,7 +373,7 @@ mod tests {
 
     #[test]
     fn render_index_empty() {
-        let html = render_index("/", "30d", 1, &[], &[]);
+        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
         assert!(html.contains("No models found."));
         assert!(html.contains("Cost Explorer - Models"));
     }
@@ -376,7 +393,7 @@ mod tests {
             amount: 100.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index("/", "30d", 1, &models, &costs);
+        let html = render_index("/", "30d", 1, &models, &costs, None, "asc");
         assert!(html.contains("claude-3"));
         assert!(html.contains("100.00 USD"));
         assert!(html.contains("Active"));
@@ -386,7 +403,7 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index("/", "30d", 1, &[], &[]);
+        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -400,7 +417,7 @@ mod tests {
             protected: false,
             user_count: 1,
         }];
-        let html = render_index("/_dashboard", "30d", 1, &models, &[]);
+        let html = render_index("/_dashboard", "30d", 1, &models, &[], None, "asc");
         assert!(html.contains("/_dashboard/models/model-1"));
     }
 
