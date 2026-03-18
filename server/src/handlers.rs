@@ -180,12 +180,12 @@ pub async fn render_home(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(start, end, uid).await
+            state.service.get_daily_cost_for_user_id(start, end, uid).await
         } else {
             vec![]
         };
         let monthly_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_monthly_cost_for_user(snap_to_month_start(start), end, uid).await
+            state.service.get_monthly_cost_for_user_id(snap_to_month_start(start), end, uid).await
         } else {
             vec![]
         };
@@ -253,7 +253,7 @@ pub async fn render_daily_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(start, end, uid).await
+            state.service.get_daily_cost_for_user_id(start, end, uid).await
         } else {
             vec![]
         };
@@ -468,7 +468,7 @@ pub async fn render_user_daily_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_daily_cost_for_user(start, end, &user_id)
+        .get_daily_cost_for_user_id(start, end, &user_id)
         .await;
     let costs = pages::sort_records(costs, sort, &order);
 
@@ -514,7 +514,7 @@ pub async fn render_user_monthly_costs(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_monthly_cost_for_user(snap_to_month_start(start), end, &user_id)
+        .get_monthly_cost_for_user_id(snap_to_month_start(start), end, &user_id)
         .await;
     let costs = pages::sort_records(costs, sort, &order);
 
@@ -612,7 +612,7 @@ pub async fn render_model_daily_costs(
     #[cfg(feature = "admin")]
     let costs = state
         .service
-        .get_daily_cost_for_model(start, end, &model_id)
+        .get_daily_cost_for_model_id(start, end, &model_id)
         .await;
 
     #[cfg(not(feature = "admin"))]
@@ -621,7 +621,7 @@ pub async fn render_model_daily_costs(
         if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_daily_cost_for_user_and_model(start, end, uid, &model_id)
+                .get_daily_cost_for_user_id_and_model_id(start, end, uid, &model_id)
                 .await
         } else {
             vec![]
@@ -666,7 +666,7 @@ pub async fn render_model_monthly_costs(
     #[cfg(feature = "admin")]
     let costs = state
         .service
-        .get_monthly_cost_for_model(snap_to_month_start(start), end, &model_id)
+        .get_monthly_cost_for_model_id(snap_to_month_start(start), end, &model_id)
         .await;
 
     #[cfg(not(feature = "admin"))]
@@ -675,7 +675,7 @@ pub async fn render_model_monthly_costs(
         if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_monthly_cost_for_user_and_model(snap_to_month_start(start), end, uid, &model_id)
+                .get_monthly_cost_for_user_id_and_model_id(snap_to_month_start(start), end, uid, &model_id)
                 .await
         } else {
             vec![]
@@ -740,7 +740,7 @@ pub async fn render_date_hub(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(date_nd, next_day, uid).await
+            state.service.get_daily_cost_for_user_id(date_nd, next_day, uid).await
         } else {
             vec![]
         };
@@ -969,12 +969,11 @@ pub async fn render_date_users_for_model(
     #[cfg(not(feature = "admin"))]
     let costs = {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let all = state
-            .service
-            .get_cost_by_users_for_model_id(date_nd, next_day, &model_id)
-            .await;
         if let Some(ref uid) = current_user_id {
-            all.into_iter().filter(|c| c.user_id == *uid).collect()
+            state
+                .service
+                .get_cost_by_user_id_for_model_id(date_nd, next_day, uid, &model_id)
+                .await
         } else {
             vec![]
         }
@@ -1029,7 +1028,7 @@ pub async fn render_monthly_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let monthly_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_monthly_cost_for_user(snap_to_month_start(start), end, uid).await
+            state.service.get_monthly_cost_for_user_id(snap_to_month_start(start), end, uid).await
         } else {
             vec![]
         };
@@ -1086,7 +1085,7 @@ pub async fn render_month_hub(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let daily_cost = if let Some(ref uid) = current_user_id {
-            state.service.get_daily_cost_for_user(start, end, uid).await
+            state.service.get_daily_cost_for_user_id(start, end, uid).await
         } else {
             vec![]
         };
@@ -1307,12 +1306,11 @@ pub async fn render_month_users_for_model(
     #[cfg(not(feature = "admin"))]
     let costs = {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let all = state
-            .service
-            .get_cost_by_users_for_model_id(start, end, &model_id)
-            .await;
         if let Some(ref uid) = current_user_id {
-            all.into_iter().filter(|c| c.user_id == *uid).collect()
+            state
+                .service
+                .get_cost_by_user_id_for_model_id(start, end, uid, &model_id)
+                .await
         } else {
             vec![]
         }

@@ -29,38 +29,45 @@ pub trait CostService: Send + Sync {
         end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostByUser>;
-    async fn get_daily_cost_for_user(
-        &self,
-        start: NaiveDate,
-        end: NaiveDate,
-        user_id: &str,
-    ) -> Vec<CostRecord>;
-    async fn get_monthly_cost_for_user(
-        &self,
-        start: NaiveDate,
-        end: NaiveDate,
-        user_id: &str,
-    ) -> Vec<CostRecord>;
-    async fn get_daily_cost_for_model(
-        &self,
-        start: NaiveDate,
-        end: NaiveDate,
-        model_id: &str,
-    ) -> Vec<CostRecord>;
-    async fn get_monthly_cost_for_model(
-        &self,
-        start: NaiveDate,
-        end: NaiveDate,
-        model_id: &str,
-    ) -> Vec<CostRecord>;
-    async fn get_daily_cost_for_user_and_model(
+    async fn get_cost_by_user_id_for_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
         model_id: &str,
+    ) -> Vec<CostByUser>;
+    async fn get_daily_cost_for_user_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
     ) -> Vec<CostRecord>;
-    async fn get_monthly_cost_for_user_and_model(
+    async fn get_monthly_cost_for_user_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
+    ) -> Vec<CostRecord>;
+    async fn get_daily_cost_for_model_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        model_id: &str,
+    ) -> Vec<CostRecord>;
+    async fn get_monthly_cost_for_model_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        model_id: &str,
+    ) -> Vec<CostRecord>;
+    async fn get_daily_cost_for_user_id_and_model_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
+        model_id: &str,
+    ) -> Vec<CostRecord>;
+    async fn get_monthly_cost_for_user_id_and_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
@@ -196,13 +203,33 @@ impl CostService for RealCostService {
         costs
     }
 
-    async fn get_daily_cost_for_user(
+    async fn get_cost_by_user_id_for_model_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
+        model_id: &str,
+    ) -> Vec<CostByUser> {
+        let mut costs =
+            db::get_cost_by_user_id_for_model_id(&self.cost_pool, start, end, user_id, model_id)
+                .await
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to query cost by user id for model: {e}");
+                    Vec::new()
+                });
+        for cost in &mut costs {
+            cost.user_email = self.get_user_email(&cost.user_id).await;
+        }
+        costs
+    }
+
+    async fn get_daily_cost_for_user_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_daily_cost_for_user(&self.cost_pool, start, end, user_id)
+        db::get_daily_cost_for_user_id(&self.cost_pool, start, end, user_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query daily cost for user: {e}");
@@ -210,13 +237,13 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_monthly_cost_for_user(
+    async fn get_monthly_cost_for_user_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_monthly_cost_for_user(&self.cost_pool, start, end, user_id)
+        db::get_monthly_cost_for_user_id(&self.cost_pool, start, end, user_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query monthly cost for user: {e}");
@@ -224,13 +251,13 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_daily_cost_for_model(
+    async fn get_daily_cost_for_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_daily_cost_for_model(&self.cost_pool, start, end, model_id)
+        db::get_daily_cost_for_model_id(&self.cost_pool, start, end, model_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query daily cost for model: {e}");
@@ -238,13 +265,13 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_monthly_cost_for_model(
+    async fn get_monthly_cost_for_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_monthly_cost_for_model(&self.cost_pool, start, end, model_id)
+        db::get_monthly_cost_for_model_id(&self.cost_pool, start, end, model_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query monthly cost for model: {e}");
@@ -252,14 +279,14 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_daily_cost_for_user_and_model(
+    async fn get_daily_cost_for_user_id_and_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
         model_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_daily_cost_for_user_and_model(&self.cost_pool, start, end, user_id, model_id)
+        db::get_daily_cost_for_user_id_and_model_id(&self.cost_pool, start, end, user_id, model_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query daily cost for user and model: {e}");
@@ -267,14 +294,14 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_monthly_cost_for_user_and_model(
+    async fn get_monthly_cost_for_user_id_and_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
         model_id: &str,
     ) -> Vec<CostRecord> {
-        db::get_monthly_cost_for_user_and_model(&self.cost_pool, start, end, user_id, model_id)
+        db::get_monthly_cost_for_user_id_and_model_id(&self.cost_pool, start, end, user_id, model_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query monthly cost for user and model: {e}");

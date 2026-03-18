@@ -108,7 +108,21 @@ impl CostService for MockCostService {
         self.users.clone()
     }
 
-    async fn get_daily_cost_for_user(
+    async fn get_cost_by_user_id_for_model_id(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        user_id: &str,
+        _model_id: &str,
+    ) -> Vec<CostByUser> {
+        self.users
+            .iter()
+            .filter(|u| u.user_id == user_id)
+            .cloned()
+            .collect()
+    }
+
+    async fn get_daily_cost_for_user_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -117,7 +131,7 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
-    async fn get_monthly_cost_for_user(
+    async fn get_monthly_cost_for_user_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -126,7 +140,7 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
-    async fn get_daily_cost_for_model(
+    async fn get_daily_cost_for_model_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -135,7 +149,7 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
-    async fn get_monthly_cost_for_model(
+    async fn get_monthly_cost_for_model_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -144,7 +158,7 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
-    async fn get_daily_cost_for_user_and_model(
+    async fn get_daily_cost_for_user_id_and_model_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -154,7 +168,7 @@ impl CostService for MockCostService {
         self.daily.clone()
     }
 
-    async fn get_monthly_cost_for_user_and_model(
+    async fn get_monthly_cost_for_user_id_and_model_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,

@@ -501,7 +501,36 @@ pub async fn get_cost_by_users_for_model_id(
         .collect())
 }
 
-pub async fn get_daily_cost_for_user(
+pub async fn get_cost_by_user_id_for_model_id(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    user_id: &str,
+    model_id: &str,
+) -> Result<Vec<CostByUser>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT user_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3 AND model_id = $4
+           GROUP BY user_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .bind(model_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, amount, currency)| CostByUser {
+            user_id,
+            user_email: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_daily_cost_for_user_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -527,7 +556,7 @@ pub async fn get_daily_cost_for_user(
         .collect())
 }
 
-pub async fn get_monthly_cost_for_user(
+pub async fn get_monthly_cost_for_user_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -553,7 +582,7 @@ pub async fn get_monthly_cost_for_user(
         .collect())
 }
 
-pub async fn get_daily_cost_for_model(
+pub async fn get_daily_cost_for_model_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -579,7 +608,7 @@ pub async fn get_daily_cost_for_model(
         .collect())
 }
 
-pub async fn get_monthly_cost_for_model(
+pub async fn get_monthly_cost_for_model_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -605,7 +634,7 @@ pub async fn get_monthly_cost_for_model(
         .collect())
 }
 
-pub async fn get_daily_cost_for_user_and_model(
+pub async fn get_daily_cost_for_user_id_and_model_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -633,7 +662,7 @@ pub async fn get_daily_cost_for_user_and_model(
         .collect())
 }
 
-pub async fn get_monthly_cost_for_user_and_model(
+pub async fn get_monthly_cost_for_user_id_and_model_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
