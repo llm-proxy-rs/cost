@@ -9,15 +9,21 @@ pub trait CostService: Send + Sync {
     async fn health_check(&self) -> Result<(), String>;
     async fn get_daily_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
     async fn get_monthly_cost(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostRecord>;
-    async fn get_cost_by_user(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser>;
-    async fn get_cost_by_model(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel>;
-    async fn get_cost_by_model_for_user(
+    async fn get_cost_by_users(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser>;
+    async fn get_cost_by_user_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
+    ) -> Vec<CostByUser>;
+    async fn get_cost_by_models(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel>;
+    async fn get_cost_by_models_for_user_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostByModel>;
-    async fn get_cost_by_user_for_model(
+    async fn get_cost_by_users_for_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
@@ -69,6 +75,7 @@ pub trait CostService: Send + Sync {
     async fn list_users_enriched(&self) -> Vec<UserInfo>;
     async fn get_user_info(&self, user_id: &str) -> Option<UserInfo>;
     async fn list_models_enriched(&self) -> Vec<ModelInfo>;
+    async fn list_models_enriched_by_user_id(&self, user_id: &str) -> Vec<ModelInfo>;
     async fn get_model_info(&self, model_id: &str) -> Option<ModelInfo>;
 }
 
@@ -109,8 +116,8 @@ impl CostService for RealCostService {
             })
     }
 
-    async fn get_cost_by_user(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser> {
-        let mut costs = db::get_cost_by_user(&self.cost_pool, start, end)
+    async fn get_cost_by_users(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByUser> {
+        let mut costs = db::get_cost_by_users(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query cost by user: {e}");
@@ -122,8 +129,26 @@ impl CostService for RealCostService {
         costs
     }
 
-    async fn get_cost_by_model(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel> {
-        let mut costs = db::get_cost_by_model(&self.cost_pool, start, end)
+    async fn get_cost_by_user_id(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        user_id: &str,
+    ) -> Vec<CostByUser> {
+        let mut costs = db::get_cost_by_user_id(&self.cost_pool, start, end, user_id)
+            .await
+            .unwrap_or_else(|e| {
+                log::error!("Failed to query cost by user id: {e}");
+                Vec::new()
+            });
+        for cost in &mut costs {
+            cost.user_email = self.get_user_email(&cost.user_id).await;
+        }
+        costs
+    }
+
+    async fn get_cost_by_models(&self, start: NaiveDate, end: NaiveDate) -> Vec<CostByModel> {
+        let mut costs = db::get_cost_by_models(&self.cost_pool, start, end)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query cost by model: {e}");
@@ -135,13 +160,13 @@ impl CostService for RealCostService {
         costs
     }
 
-    async fn get_cost_by_model_for_user(
+    async fn get_cost_by_models_for_user_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         user_id: &str,
     ) -> Vec<CostByModel> {
-        let mut costs = db::get_cost_by_model_for_user(&self.cost_pool, start, end, user_id)
+        let mut costs = db::get_cost_by_models_for_user_id(&self.cost_pool, start, end, user_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query cost by model for user: {e}");
@@ -153,13 +178,13 @@ impl CostService for RealCostService {
         costs
     }
 
-    async fn get_cost_by_user_for_model(
+    async fn get_cost_by_users_for_model_id(
         &self,
         start: NaiveDate,
         end: NaiveDate,
         model_id: &str,
     ) -> Vec<CostByUser> {
-        let mut costs = db::get_cost_by_user_for_model(&self.cost_pool, start, end, model_id)
+        let mut costs = db::get_cost_by_users_for_model_id(&self.cost_pool, start, end, model_id)
             .await
             .unwrap_or_else(|e| {
                 log::error!("Failed to query cost by user for model: {e}");
@@ -304,6 +329,15 @@ impl CostService for RealCostService {
 
     async fn list_models_enriched(&self) -> Vec<ModelInfo> {
         db::list_models_enriched(&self.pool)
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn list_models_enriched_by_user_id(&self, user_id: &str) -> Vec<ModelInfo> {
+        let Some(uuid) = uuid::Uuid::parse_str(user_id).ok() else {
+            return Vec::new();
+        };
+        db::list_models_enriched_by_user_id(&self.pool, uuid)
             .await
             .unwrap_or_default()
     }

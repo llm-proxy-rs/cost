@@ -1,5 +1,3 @@
-#[cfg(not(feature = "admin"))]
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -194,7 +192,7 @@ pub async fn render_home(
         let model_count = if let Some(ref uid) = current_user_id {
             let costs = state
                 .service
-                .get_cost_by_model_for_user(start, end, uid)
+                .get_cost_by_models_for_user_id(start, end, uid)
                 .await;
             costs.len()
         } else {
@@ -290,7 +288,7 @@ pub async fn render_users(
     #[cfg(feature = "admin")]
     {
         let users_enriched = state.service.list_users_enriched().await;
-        let costs = state.service.get_cost_by_user(start, end).await;
+        let costs = state.service.get_cost_by_users(start, end).await;
 
         Html(pages::users::render_index(
             &state.base_path,
@@ -310,13 +308,13 @@ pub async fn render_users(
             Some(uid) => uid,
             None => return forbidden(),
         };
-        let costs = state.service.get_cost_by_user(start, end).await;
-        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
-        let users_enriched = state.service.list_users_enriched().await;
-        let users_enriched: Vec<_> = users_enriched
+        let costs = state.service.get_cost_by_user_id(start, end, &current_user_id).await;
+        let users_enriched = state
+            .service
+            .get_user_info(&current_user_id)
+            .await
             .into_iter()
-            .filter(|u| u.user_id == current_user_id)
-            .collect();
+            .collect::<Vec<_>>();
 
         Html(pages::users::render_index(
             &state.base_path,
@@ -350,7 +348,7 @@ pub async fn render_models(
     #[cfg(feature = "admin")]
     {
         let models_enriched = state.service.list_models_enriched().await;
-        let costs = state.service.get_cost_by_model(start, end).await;
+        let costs = state.service.get_cost_by_models(start, end).await;
 
         Html(pages::models::render_index(
             &state.base_path,
@@ -370,25 +368,16 @@ pub async fn render_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(start, end, uid)
+                .get_cost_by_models_for_user_id(start, end, uid)
                 .await
         } else {
             vec![]
         };
-        // Filter models to only those the user has cost data for
-        let cost_model_ids: HashSet<String> =
-            costs.iter().map(|c| c.model_id.clone()).collect();
-        let models_enriched: Vec<_> = state
-            .service
-            .list_models_enriched()
-            .await
-            .into_iter()
-            .filter(|m| cost_model_ids.contains(&m.model_id))
-            .map(|mut m| {
-                m.user_count = 1;
-                m
-            })
-            .collect();
+        let models_enriched = if let Some(ref uid) = current_user_id {
+            state.service.list_models_enriched_by_user_id(uid).await
+        } else {
+            vec![]
+        };
 
         Html(pages::models::render_index(
             &state.base_path,
@@ -560,7 +549,7 @@ pub async fn render_model_hub(
             let (start, end) = resolve_period("12m");
             let costs = state
                 .service
-                .get_cost_by_model_for_user(start, end, uid)
+                .get_cost_by_models_for_user_id(start, end, uid)
                 .await;
             costs.iter().any(|c| c.model_id == model_id)
         } else {
@@ -732,8 +721,8 @@ pub async fn render_date_hub(
             .first()
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
-        let users = state.service.get_cost_by_user(date_nd, next_day).await;
-        let models = state.service.get_cost_by_model(date_nd, next_day).await;
+        let users = state.service.get_cost_by_users(date_nd, next_day).await;
+        let models = state.service.get_cost_by_models(date_nd, next_day).await;
 
         Html(pages::costs::render_hub(
             &state.base_path,
@@ -761,17 +750,14 @@ pub async fn render_date_hub(
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
         let users = if let Some(ref uid) = current_user_id {
-            let all = state.service.get_cost_by_user(date_nd, next_day).await;
-            all.into_iter()
-                .filter(|c| c.user_id == *uid)
-                .collect::<Vec<_>>()
+            state.service.get_cost_by_user_id(date_nd, next_day, uid).await
         } else {
             vec![]
         };
         let models = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(date_nd, next_day, uid)
+                .get_cost_by_models_for_user_id(date_nd, next_day, uid)
                 .await
         } else {
             vec![]
@@ -811,7 +797,7 @@ pub async fn render_date_users(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
+        let costs = state.service.get_cost_by_users(date_nd, next_day).await;
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::costs::render_users(
@@ -830,8 +816,7 @@ pub async fn render_date_users(
             Some(uid) => uid,
             None => return forbidden(),
         };
-        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
-        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
+        let costs = state.service.get_cost_by_user_id(date_nd, next_day, &current_user_id).await;
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::costs::render_users(
@@ -866,7 +851,7 @@ pub async fn render_date_models(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_model(date_nd, next_day).await;
+        let costs = state.service.get_cost_by_models(date_nd, next_day).await;
         let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::costs::render_models(
@@ -885,7 +870,7 @@ pub async fn render_date_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(date_nd, next_day, uid)
+                .get_cost_by_models_for_user_id(date_nd, next_day, uid)
                 .await
         } else {
             vec![]
@@ -936,7 +921,7 @@ pub async fn render_date_models_for_user(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_model_for_user(date_nd, next_day, &user_id)
+        .get_cost_by_models_for_user_id(date_nd, next_day, &user_id)
         .await;
     let costs = pages::sort_by_model(costs, sort, &order);
 
@@ -978,7 +963,7 @@ pub async fn render_date_users_for_model(
     #[cfg(feature = "admin")]
     let costs = state
         .service
-        .get_cost_by_user_for_model(date_nd, next_day, &model_id)
+        .get_cost_by_users_for_model_id(date_nd, next_day, &model_id)
         .await;
 
     #[cfg(not(feature = "admin"))]
@@ -986,7 +971,7 @@ pub async fn render_date_users_for_model(
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let all = state
             .service
-            .get_cost_by_user_for_model(date_nd, next_day, &model_id)
+            .get_cost_by_users_for_model_id(date_nd, next_day, &model_id)
             .await;
         if let Some(ref uid) = current_user_id {
             all.into_iter().filter(|c| c.user_id == *uid).collect()
@@ -1082,8 +1067,8 @@ pub async fn render_month_hub(
             .first()
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
-        let users = state.service.get_cost_by_user(start, end).await;
-        let models = state.service.get_cost_by_model(start, end).await;
+        let users = state.service.get_cost_by_users(start, end).await;
+        let models = state.service.get_cost_by_models(start, end).await;
 
         Html(pages::monthly::render_hub(
             &state.base_path,
@@ -1111,17 +1096,14 @@ pub async fn render_month_hub(
             .map(|r| r.currency.as_str())
             .unwrap_or("USD");
         let users = if let Some(ref uid) = current_user_id {
-            let all = state.service.get_cost_by_user(start, end).await;
-            all.into_iter()
-                .filter(|c| c.user_id == *uid)
-                .collect::<Vec<_>>()
+            state.service.get_cost_by_user_id(start, end, uid).await
         } else {
             vec![]
         };
         let models = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(start, end, uid)
+                .get_cost_by_models_for_user_id(start, end, uid)
                 .await
         } else {
             vec![]
@@ -1159,7 +1141,7 @@ pub async fn render_month_users(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_user(start, end).await;
+        let costs = state.service.get_cost_by_users(start, end).await;
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::monthly::render_users(
@@ -1178,8 +1160,7 @@ pub async fn render_month_users(
             Some(uid) => uid,
             None => return forbidden(),
         };
-        let costs = state.service.get_cost_by_user(start, end).await;
-        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
+        let costs = state.service.get_cost_by_user_id(start, end, &current_user_id).await;
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::monthly::render_users(
@@ -1212,7 +1193,7 @@ pub async fn render_month_models(
 
     #[cfg(feature = "admin")]
     {
-        let costs = state.service.get_cost_by_model(start, end).await;
+        let costs = state.service.get_cost_by_models(start, end).await;
         let costs = pages::sort_by_model(costs, sort, &order);
 
         Html(pages::monthly::render_models(
@@ -1231,7 +1212,7 @@ pub async fn render_month_models(
         let costs = if let Some(ref uid) = current_user_id {
             state
                 .service
-                .get_cost_by_model_for_user(start, end, uid)
+                .get_cost_by_models_for_user_id(start, end, uid)
                 .await
         } else {
             vec![]
@@ -1280,7 +1261,7 @@ pub async fn render_month_models_for_user(
         .unwrap_or_else(|| "unknown".to_string());
     let costs = state
         .service
-        .get_cost_by_model_for_user(start, end, &user_id)
+        .get_cost_by_models_for_user_id(start, end, &user_id)
         .await;
     let costs = pages::sort_by_model(costs, sort, &order);
 
@@ -1320,7 +1301,7 @@ pub async fn render_month_users_for_model(
     #[cfg(feature = "admin")]
     let costs = state
         .service
-        .get_cost_by_user_for_model(start, end, &model_id)
+        .get_cost_by_users_for_model_id(start, end, &model_id)
         .await;
 
     #[cfg(not(feature = "admin"))]
@@ -1328,7 +1309,7 @@ pub async fn render_month_users_for_model(
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         let all = state
             .service
-            .get_cost_by_user_for_model(start, end, &model_id)
+            .get_cost_by_users_for_model_id(start, end, &model_id)
             .await;
         if let Some(ref uid) = current_user_id {
             all.into_iter().filter(|c| c.user_id == *uid).collect()
@@ -1378,13 +1359,11 @@ mod tests {
         let (start, end) = resolve_period("last_month");
         assert_eq!(start.day(), 1);
         assert_eq!(start.month(), end.month());
-        // end should be last day of that month
         let next_month_first =
             NaiveDate::from_ymd_opt(end.year(), end.month(), 1).unwrap() + chrono::Duration::days(31);
         let last_day =
             NaiveDate::from_ymd_opt(next_month_first.year(), next_month_first.month(), 1).unwrap()
                 - chrono::Duration::days(1);
-        // The end should be within that month
         assert!(end.day() >= 28);
         assert_eq!(end, last_day);
     }

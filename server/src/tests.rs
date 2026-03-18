@@ -69,15 +69,28 @@ impl CostService for MockCostService {
         }]
     }
 
-    async fn get_cost_by_user(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByUser> {
+    async fn get_cost_by_users(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByUser> {
         self.users.clone()
     }
 
-    async fn get_cost_by_model(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByModel> {
+    async fn get_cost_by_user_id(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        user_id: &str,
+    ) -> Vec<CostByUser> {
+        self.users
+            .iter()
+            .filter(|u| u.user_id == user_id)
+            .cloned()
+            .collect()
+    }
+
+    async fn get_cost_by_models(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByModel> {
         self.models.clone()
     }
 
-    async fn get_cost_by_model_for_user(
+    async fn get_cost_by_models_for_user_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -86,7 +99,7 @@ impl CostService for MockCostService {
         self.models.clone()
     }
 
-    async fn get_cost_by_user_for_model(
+    async fn get_cost_by_users_for_model_id(
         &self,
         _start: NaiveDate,
         _end: NaiveDate,
@@ -194,6 +207,16 @@ impl CostService for MockCostService {
     }
 
     async fn list_models_enriched(&self) -> Vec<ModelInfo> {
+        vec![ModelInfo {
+            model_id: "cccc-dddd".to_string(),
+            model_name: "claude-3-sonnet".to_string(),
+            is_disabled: false,
+            protected: false,
+            user_count: 1,
+        }]
+    }
+
+    async fn list_models_enriched_by_user_id(&self, _user_id: &str) -> Vec<ModelInfo> {
         vec![ModelInfo {
             model_id: "cccc-dddd".to_string(),
             model_name: "claude-3-sonnet".to_string(),

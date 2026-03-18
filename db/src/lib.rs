@@ -181,6 +181,34 @@ pub async fn list_models_enriched(pool: &PgPool) -> Result<Vec<ModelInfo>> {
         .collect())
 }
 
+pub async fn list_models_enriched_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Vec<ModelInfo>> {
+    let rows = sqlx::query_as::<_, (Uuid, String, bool, bool)>(
+        r#"select
+            m.model_id,
+            m.model_name,
+            coalesce(m.is_disabled, false),
+            coalesce(m.protected, false)
+        from models m
+        where exists (select 1 from inference_profiles ip where ip.model_id = m.model_id and ip.user_id = $1::uuid)
+        order by m.model_name"#,
+    )
+    .bind(user_id.to_string().to_lowercase())
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(model_id, model_name, is_disabled, protected)| ModelInfo {
+                model_id: model_id.to_string(),
+                model_name,
+                is_disabled,
+                protected,
+                user_count: 1,
+            },
+        )
+        .collect())
+}
+
 pub async fn get_model_info(pool: &PgPool, model_id: Uuid) -> Option<ModelInfo> {
     let row = sqlx::query_as::<_, (Uuid, String, bool, bool, i64)>(
         r#"select
@@ -351,7 +379,7 @@ pub async fn get_monthly_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -
         .collect())
 }
 
-pub async fn get_cost_by_user(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostByUser>> {
+pub async fn get_cost_by_users(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostByUser>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT user_id, SUM(amount), MIN(currency)
            FROM cost WHERE date >= $1 AND date < $2
@@ -372,7 +400,29 @@ pub async fn get_cost_by_user(pool: &PgPool, start: NaiveDate, end: NaiveDate) -
         .collect())
 }
 
-pub async fn get_cost_by_model(
+pub async fn get_cost_by_user_id(pool: &PgPool, start: NaiveDate, end: NaiveDate, user_id: &str) -> Result<Vec<CostByUser>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT user_id, SUM(amount), MIN(currency)
+           FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3
+           GROUP BY user_id ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, amount, currency)| CostByUser {
+            user_id,
+            user_email: None,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_cost_by_models(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -397,7 +447,7 @@ pub async fn get_cost_by_model(
         .collect())
 }
 
-pub async fn get_cost_by_model_for_user(
+pub async fn get_cost_by_models_for_user_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
@@ -424,7 +474,7 @@ pub async fn get_cost_by_model_for_user(
         .collect())
 }
 
-pub async fn get_cost_by_user_for_model(
+pub async fn get_cost_by_users_for_model_id(
     pool: &PgPool,
     start: NaiveDate,
     end: NaiveDate,
