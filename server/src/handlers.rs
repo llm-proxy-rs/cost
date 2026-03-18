@@ -134,6 +134,11 @@ async fn resolve_current_user_id(service: &dyn CostService, email: &str) -> Opti
     service.get_user_id_by_email(email).await
 }
 
+#[cfg(not(feature = "admin"))]
+fn forbidden() -> Response {
+    (StatusCode::FORBIDDEN, "Access denied. Your account does not have a user profile.").into_response()
+}
+
 pub async fn render_home(
     session: Session,
     State(state): State<AppState>,
@@ -301,22 +306,17 @@ pub async fn render_users(
 
     #[cfg(not(feature = "admin"))]
     {
-        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
+        let current_user_id = match resolve_current_user_id(state.service.as_ref(), &_email).await {
+            Some(uid) => uid,
+            None => return forbidden(),
+        };
         let costs = state.service.get_cost_by_user(start, end).await;
-        let costs: Vec<_> = if let Some(ref uid) = current_user_id {
-            costs.into_iter().filter(|c| c.user_id == *uid).collect()
-        } else {
-            costs
-        };
+        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
         let users_enriched = state.service.list_users_enriched().await;
-        let users_enriched: Vec<_> = if let Some(ref uid) = current_user_id {
-            users_enriched
-                .into_iter()
-                .filter(|u| u.user_id == *uid)
-                .collect()
-        } else {
-            users_enriched
-        };
+        let users_enriched: Vec<_> = users_enriched
+            .into_iter()
+            .filter(|u| u.user_id == current_user_id)
+            .collect();
 
         Html(pages::users::render_index(
             &state.base_path,
@@ -418,7 +418,7 @@ pub async fn render_user_hub(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         if current_user_id.as_deref() != Some(user_id.as_str()) {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 
@@ -463,7 +463,7 @@ pub async fn render_user_daily_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         if current_user_id.as_deref() != Some(user_id.as_str()) {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 
@@ -509,7 +509,7 @@ pub async fn render_user_monthly_costs(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         if current_user_id.as_deref() != Some(user_id.as_str()) {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 
@@ -567,7 +567,7 @@ pub async fn render_model_hub(
             false
         };
         if !has_access {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 
@@ -826,13 +826,12 @@ pub async fn render_date_users(
 
     #[cfg(not(feature = "admin"))]
     {
-        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
-        let costs: Vec<_> = if let Some(ref uid) = current_user_id {
-            costs.into_iter().filter(|c| c.user_id == *uid).collect()
-        } else {
-            costs
+        let current_user_id = match resolve_current_user_id(state.service.as_ref(), &_email).await {
+            Some(uid) => uid,
+            None => return forbidden(),
         };
+        let costs = state.service.get_cost_by_user(date_nd, next_day).await;
+        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::costs::render_users(
@@ -919,7 +918,7 @@ pub async fn render_date_models_for_user(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         if current_user_id.as_deref() != Some(user_id.as_str()) {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 
@@ -1175,13 +1174,12 @@ pub async fn render_month_users(
 
     #[cfg(not(feature = "admin"))]
     {
-        let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
-        let costs = state.service.get_cost_by_user(start, end).await;
-        let costs: Vec<_> = if let Some(ref uid) = current_user_id {
-            costs.into_iter().filter(|c| c.user_id == *uid).collect()
-        } else {
-            costs
+        let current_user_id = match resolve_current_user_id(state.service.as_ref(), &_email).await {
+            Some(uid) => uid,
+            None => return forbidden(),
         };
+        let costs = state.service.get_cost_by_user(start, end).await;
+        let costs: Vec<_> = costs.into_iter().filter(|c| c.user_id == current_user_id).collect();
         let costs = pages::sort_by_user(costs, sort, &order);
 
         Html(pages::monthly::render_users(
@@ -1266,7 +1264,7 @@ pub async fn render_month_models_for_user(
     {
         let current_user_id = resolve_current_user_id(state.service.as_ref(), &_email).await;
         if current_user_id.as_deref() != Some(user_id.as_str()) {
-            return StatusCode::FORBIDDEN.into_response();
+            return forbidden();
         }
     }
 

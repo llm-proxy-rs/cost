@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use axum::body::Body;
+use axum::response::IntoResponse;
+use axum::routing::get as axum_get;
 use chrono::NaiveDate;
 use common::{CostByModel, CostByUser, CostRecord, ModelInfo, UserInfo};
 use http_body_util::BodyExt;
 use std::sync::Arc;
 use tower::ServiceExt;
-use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, Session, SessionManagerLayer};
 
 use crate::build_router;
 use crate::handlers::AppState;
@@ -15,6 +17,7 @@ struct MockCostService {
     users: Vec<CostByUser>,
     models: Vec<CostByModel>,
     daily: Vec<CostRecord>,
+    user_id_for_email: Option<String>,
 }
 
 impl MockCostService {
@@ -37,7 +40,14 @@ impl MockCostService {
                 amount: 100.0,
                 currency: "USD".to_string(),
             }],
+            user_id_for_email: Some("aaaa-bbbb".to_string()),
         }
+    }
+
+    fn no_profile() -> Self {
+        let mut svc = Self::new();
+        svc.user_id_for_email = None;
+        svc
     }
 }
 
@@ -158,7 +168,7 @@ impl CostService for MockCostService {
     }
 
     async fn get_user_id_by_email(&self, _email: &str) -> Option<String> {
-        Some("aaaa-bbbb".to_string())
+        self.user_id_for_email.clone()
     }
 
     async fn list_users_enriched(&self) -> Vec<UserInfo> {
@@ -215,6 +225,62 @@ fn mock_state(base: &str) -> AppState {
         cognito_region: String::new(),
         cognito_user_pool_id: String::new(),
     }
+}
+
+fn mock_state_no_profile() -> AppState {
+    AppState {
+        service: Arc::new(MockCostService::no_profile()),
+        base_path: "/".to_string(),
+        cognito_client_id: String::new(),
+        cognito_client_secret: String::new(),
+        cognito_domain: String::new(),
+        cognito_redirect_uri: String::new(),
+        cognito_region: String::new(),
+        cognito_user_pool_id: String::new(),
+    }
+}
+
+async fn test_login_handler(session: Session) -> impl IntoResponse {
+    let _ = session.insert("email", "unknown@example.com").await;
+    "ok"
+}
+
+fn no_profile_app() -> axum::Router {
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_expiry(Expiry::OnInactivity(time::Duration::seconds(3600)));
+    let state = mock_state_no_profile();
+    build_router(state)
+        .route("/test-login", axum_get(test_login_handler))
+        .layer(session_layer)
+}
+
+async fn authenticated_get_no_profile(uri: &str) -> (u16, String) {
+    let app = no_profile_app();
+
+    let login_req = axum::http::Request::builder()
+        .uri("/test-login")
+        .body(Body::empty())
+        .unwrap();
+    let login_resp = app.clone().oneshot(login_req).await.unwrap();
+    let cookie = login_resp
+        .headers()
+        .get("set-cookie")
+        .expect("session cookie should be set")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let req = axum::http::Request::builder()
+        .uri(uri)
+        .header("cookie", &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status().as_u16();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    (status, text)
 }
 
 fn test_app() -> axum::Router {
@@ -307,7 +373,6 @@ async fn unauthenticated_model_monthly_costs_redirects_to_login() {
     assert!(status == 303 || status == 302 || status == 307);
 }
 
-// Daily cost drill-down redirects
 #[tokio::test]
 async fn unauthenticated_cost_date_detail_redirects_to_login() {
     let (status, _) = get("/costs/daily/2024-01-15").await;
@@ -338,7 +403,6 @@ async fn unauthenticated_cost_date_model_users_redirects_to_login() {
     assert!(status == 303 || status == 302 || status == 307);
 }
 
-// Monthly cost redirects
 #[tokio::test]
 async fn unauthenticated_monthly_costs_redirects_to_login() {
     let (status, _) = get("/costs/monthly").await;
@@ -414,4 +478,57 @@ async fn nested_base_path_monthly_costs_redirect() {
     let app = test_app_with_base("/_dashboard");
     let (status, _) = get_from(app, "/_dashboard/costs/monthly").await;
     assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn no_profile_users_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/users").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn no_profile_date_users_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/costs/daily/2024-01-15/users").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn no_profile_month_users_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/costs/monthly/2024-01/users").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn no_profile_user_detail_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/users/aaaa-bbbb").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn no_profile_model_hub_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/models/cccc-dddd").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn no_profile_home_returns_200_empty() {
+    let (status, _) = authenticated_get_no_profile("/").await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn no_profile_daily_costs_returns_200_empty() {
+    let (status, _) = authenticated_get_no_profile("/costs/daily").await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn no_profile_models_returns_200_empty() {
+    let (status, _) = authenticated_get_no_profile("/models").await;
+    assert_eq!(status, 200);
 }
