@@ -53,24 +53,36 @@ impl MockCostService {
 
 #[async_trait]
 impl CostService for MockCostService {
-    async fn health_check(&self) -> Result<(), String> {
+    async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
 
-    async fn get_daily_cost(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostRecord> {
-        self.daily.clone()
+    async fn get_daily_cost(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
-    async fn get_monthly_cost(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostRecord> {
-        vec![CostRecord {
+    async fn get_monthly_cost(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(vec![CostRecord {
             date: "2024-01-01".to_string(),
             amount: 500.0,
             currency: "USD".to_string(),
-        }]
+        }])
     }
 
-    async fn get_cost_by_users(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByUser> {
-        self.users.clone()
+    async fn get_cost_by_users(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostByUser>> {
+        Ok(self.users.clone())
     }
 
     async fn get_cost_by_user_id(
@@ -78,16 +90,21 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         user_id: &str,
-    ) -> Vec<CostByUser> {
-        self.users
+    ) -> anyhow::Result<Vec<CostByUser>> {
+        Ok(self
+            .users
             .iter()
             .filter(|u| u.user_id == user_id)
             .cloned()
-            .collect()
+            .collect())
     }
 
-    async fn get_cost_by_models(&self, _start: NaiveDate, _end: NaiveDate) -> Vec<CostByModel> {
-        self.models.clone()
+    async fn get_cost_by_models(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostByModel>> {
+        Ok(self.models.clone())
     }
 
     async fn get_cost_by_models_for_user_id(
@@ -95,8 +112,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _user_id: &str,
-    ) -> Vec<CostByModel> {
-        self.models.clone()
+    ) -> anyhow::Result<Vec<CostByModel>> {
+        Ok(self.models.clone())
     }
 
     async fn get_cost_by_users_for_model_id(
@@ -104,8 +121,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _model_id: &str,
-    ) -> Vec<CostByUser> {
-        self.users.clone()
+    ) -> anyhow::Result<Vec<CostByUser>> {
+        Ok(self.users.clone())
     }
 
     async fn get_cost_by_user_id_for_model_id(
@@ -114,12 +131,13 @@ impl CostService for MockCostService {
         _end: NaiveDate,
         user_id: &str,
         _model_id: &str,
-    ) -> Vec<CostByUser> {
-        self.users
+    ) -> anyhow::Result<Vec<CostByUser>> {
+        Ok(self
+            .users
             .iter()
             .filter(|u| u.user_id == user_id)
             .cloned()
-            .collect()
+            .collect())
     }
 
     async fn get_daily_cost_for_user_id(
@@ -127,8 +145,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _user_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
     async fn get_monthly_cost_for_user_id(
@@ -136,8 +154,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _user_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
     async fn get_daily_cost_for_model_id(
@@ -145,8 +163,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _model_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
     async fn get_monthly_cost_for_model_id(
@@ -154,8 +172,8 @@ impl CostService for MockCostService {
         _start: NaiveDate,
         _end: NaiveDate,
         _model_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
     async fn get_daily_cost_for_user_id_and_model_id(
@@ -164,8 +182,8 @@ impl CostService for MockCostService {
         _end: NaiveDate,
         _user_id: &str,
         _model_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
     async fn get_monthly_cost_for_user_id_and_model_id(
@@ -174,80 +192,86 @@ impl CostService for MockCostService {
         _end: NaiveDate,
         _user_id: &str,
         _model_id: &str,
-    ) -> Vec<CostRecord> {
-        self.daily.clone()
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(self.daily.clone())
     }
 
-    async fn get_user_email(&self, _user_id: &str) -> Option<String> {
-        Some("alice@example.com".to_string())
+    async fn get_user_email(&self, _user_id: &str) -> anyhow::Result<Option<String>> {
+        Ok(Some("alice@example.com".to_string()))
     }
 
-    async fn get_model_name(&self, _model_id: &str) -> Option<String> {
-        Some("claude-3-sonnet".to_string())
+    async fn get_model_name(&self, _model_id: &str) -> anyhow::Result<Option<String>> {
+        Ok(Some("claude-3-sonnet".to_string()))
     }
 
-    async fn list_users(&self) -> Vec<(String, String)> {
-        vec![("aaaa-bbbb".to_string(), "alice@example.com".to_string())]
+    async fn list_users(&self) -> anyhow::Result<Vec<(String, String)>> {
+        Ok(vec![("aaaa-bbbb".to_string(), "alice@example.com".to_string())])
     }
 
-    async fn list_models(&self) -> Vec<(String, String)> {
-        vec![("cccc-dddd".to_string(), "claude-3-sonnet".to_string())]
+    async fn list_models(&self) -> anyhow::Result<Vec<(String, String)>> {
+        Ok(vec![(
+            "cccc-dddd".to_string(),
+            "claude-3-sonnet".to_string(),
+        )])
     }
 
-    async fn get_user_id_by_email(&self, _email: &str) -> Option<String> {
-        self.user_id_for_email.clone()
+    async fn get_user_id_by_email(&self, _email: &str) -> anyhow::Result<Option<String>> {
+        Ok(self.user_id_for_email.clone())
     }
 
-    async fn list_users_enriched(&self) -> Vec<UserInfo> {
-        vec![UserInfo {
+    async fn list_users_enriched(&self) -> anyhow::Result<Vec<UserInfo>> {
+        Ok(vec![UserInfo {
             user_id: "aaaa-bbbb".to_string(),
             user_email: "alice@example.com".to_string(),
             created_at: "2024-01-01".to_string(),
             api_key_count: 2,
             active_api_key_count: 1,
             inference_profile_count: 3,
-        }]
+        }])
     }
 
-    async fn get_user_info(&self, _user_id: &str) -> Option<UserInfo> {
-        Some(UserInfo {
+    async fn get_user_info(&self, _user_id: &str) -> anyhow::Result<Option<UserInfo>> {
+        Ok(Some(UserInfo {
             user_id: "aaaa-bbbb".to_string(),
             user_email: "alice@example.com".to_string(),
             created_at: "2024-01-01".to_string(),
             api_key_count: 2,
             active_api_key_count: 1,
             inference_profile_count: 3,
-        })
+        }))
     }
 
-    async fn list_models_enriched(&self) -> Vec<ModelInfo> {
-        vec![ModelInfo {
+    async fn list_models_enriched(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
             model_id: "cccc-dddd".to_string(),
             model_name: "claude-3-sonnet".to_string(),
             is_disabled: false,
             protected: false,
             user_count: 1,
-        }]
+        }])
     }
 
-    async fn list_models_enriched_by_user_id(&self, _user_id: &str) -> Vec<ModelInfo> {
-        vec![ModelInfo {
+    async fn list_models_enriched_by_user_id(
+        &self,
+        _user_id: &str,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
             model_id: "cccc-dddd".to_string(),
             model_name: "claude-3-sonnet".to_string(),
             is_disabled: false,
             protected: false,
             user_count: 1,
-        }]
+        }])
     }
 
-    async fn get_model_info(&self, _model_id: &str) -> Option<ModelInfo> {
-        Some(ModelInfo {
+    async fn get_model_info(&self, _model_id: &str) -> anyhow::Result<Option<ModelInfo>> {
+        Ok(Some(ModelInfo {
             model_id: "cccc-dddd".to_string(),
             model_name: "claude-3-sonnet".to_string(),
             is_disabled: false,
             protected: false,
             user_count: 1,
-        })
+        }))
     }
 }
 
@@ -553,19 +577,22 @@ async fn no_profile_model_hub_returns_403() {
 }
 
 #[tokio::test]
-async fn no_profile_home_returns_200_empty() {
-    let (status, _) = authenticated_get_no_profile("/").await;
-    assert_eq!(status, 200);
+async fn no_profile_home_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
 }
 
 #[tokio::test]
-async fn no_profile_daily_costs_returns_200_empty() {
-    let (status, _) = authenticated_get_no_profile("/costs/daily").await;
-    assert_eq!(status, 200);
+async fn no_profile_daily_costs_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/costs/daily").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
 }
 
 #[tokio::test]
-async fn no_profile_models_returns_200_empty() {
-    let (status, _) = authenticated_get_no_profile("/models").await;
-    assert_eq!(status, 200);
+async fn no_profile_models_returns_403() {
+    let (status, body) = authenticated_get_no_profile("/models").await;
+    assert_eq!(status, 403);
+    assert!(body.contains("does not have a user profile"));
 }
