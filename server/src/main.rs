@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
     if cfg!(feature = "admin") {
         log::info!("Running in ADMIN mode (all users visible)");
     } else {
-        log::info!("Running in NORMAL mode (per-user filtering)");
+        log::info!("Running in USER mode (per-user filtering)");
     }
 
     let app_config = load_config(&args.config_file).await?;
