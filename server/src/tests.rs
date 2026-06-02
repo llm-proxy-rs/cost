@@ -44,6 +44,7 @@ impl MockCostService {
         }
     }
 
+    #[cfg(not(feature = "admin"))]
     fn no_profile() -> Self {
         let mut svc = Self::new();
         svc.user_id_for_email = None;
@@ -288,6 +289,7 @@ fn mock_state(base: &str) -> AppState {
     }
 }
 
+#[cfg(not(feature = "admin"))]
 fn mock_state_no_profile() -> AppState {
     AppState {
         service: Arc::new(MockCostService::no_profile()),
@@ -301,11 +303,13 @@ fn mock_state_no_profile() -> AppState {
     }
 }
 
+#[cfg(not(feature = "admin"))]
 async fn test_login_handler(session: Session) -> impl IntoResponse {
     let _ = session.insert("email", "unknown@example.com").await;
     "ok"
 }
 
+#[cfg(not(feature = "admin"))]
 fn no_profile_app() -> axum::Router {
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
@@ -316,6 +320,7 @@ fn no_profile_app() -> axum::Router {
         .layer(session_layer)
 }
 
+#[cfg(not(feature = "admin"))]
 async fn authenticated_get_no_profile(uri: &str) -> (u16, String) {
     let app = no_profile_app();
 
@@ -541,6 +546,7 @@ async fn nested_base_path_monthly_costs_redirect() {
     assert!(status == 303 || status == 302 || status == 307);
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_users_returns_403() {
     let (status, body) = authenticated_get_no_profile("/users").await;
@@ -548,6 +554,7 @@ async fn no_profile_users_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_date_users_returns_403() {
     let (status, body) = authenticated_get_no_profile("/costs/daily/2024-01-15/users").await;
@@ -555,6 +562,7 @@ async fn no_profile_date_users_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_month_users_returns_403() {
     let (status, body) = authenticated_get_no_profile("/costs/monthly/2024-01/users").await;
@@ -562,6 +570,7 @@ async fn no_profile_month_users_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_user_detail_returns_403() {
     let (status, body) = authenticated_get_no_profile("/users/aaaa-bbbb").await;
@@ -569,6 +578,7 @@ async fn no_profile_user_detail_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_model_hub_returns_403() {
     let (status, body) = authenticated_get_no_profile("/models/cccc-dddd").await;
@@ -576,6 +586,7 @@ async fn no_profile_model_hub_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_home_returns_403() {
     let (status, body) = authenticated_get_no_profile("/").await;
@@ -583,6 +594,7 @@ async fn no_profile_home_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_daily_costs_returns_403() {
     let (status, body) = authenticated_get_no_profile("/costs/daily").await;
@@ -590,6 +602,7 @@ async fn no_profile_daily_costs_returns_403() {
     assert!(body.contains("does not have a user profile"));
 }
 
+#[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_models_returns_403() {
     let (status, body) = authenticated_get_no_profile("/models").await;
