@@ -129,10 +129,15 @@ fn get_order(params: &PeriodParams) -> String {
         .to_string()
 }
 
-fn parse_month_range(month: &str) -> (NaiveDate, NaiveDate) {
+fn parse_date(date: &str) -> Result<NaiveDate, Response> {
+    NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid date: {date}")).into_response())
+}
+
+fn parse_month_range(month: &str) -> Result<(NaiveDate, NaiveDate), Response> {
     let start_str = format!("{}-01", month);
-    let start =
-        NaiveDate::parse_from_str(&start_str, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
+    let start = NaiveDate::parse_from_str(&start_str, "%Y-%m-%d")
+        .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid month: {month}")).into_response())?;
     let (y, m) = if start.month() == 12 {
         (start.year() + 1, 1)
     } else {
@@ -140,7 +145,7 @@ fn parse_month_range(month: &str) -> (NaiveDate, NaiveDate) {
     };
     let end = NaiveDate::from_ymd_opt(y, m, 1)
         .unwrap_or(start) - chrono::Duration::days(1);
-    (start, end)
+    Ok((start, end))
 }
 
 async fn require_login(session: &Session) -> Result<String, Response> {
@@ -235,28 +240,28 @@ mod tests {
 
     #[test]
     fn parse_month_range_january() {
-        let (start, end) = parse_month_range("2024-01");
+        let (start, end) = parse_month_range("2024-01").unwrap();
         assert_eq!(start.to_string(), "2024-01-01");
         assert_eq!(end.to_string(), "2024-01-31");
     }
 
     #[test]
     fn parse_month_range_february_leap() {
-        let (start, end) = parse_month_range("2024-02");
+        let (start, end) = parse_month_range("2024-02").unwrap();
         assert_eq!(start.to_string(), "2024-02-01");
         assert_eq!(end.to_string(), "2024-02-29");
     }
 
     #[test]
     fn parse_month_range_february_non_leap() {
-        let (start, end) = parse_month_range("2023-02");
+        let (start, end) = parse_month_range("2023-02").unwrap();
         assert_eq!(start.to_string(), "2023-02-01");
         assert_eq!(end.to_string(), "2023-02-28");
     }
 
     #[test]
     fn parse_month_range_december() {
-        let (start, end) = parse_month_range("2024-12");
+        let (start, end) = parse_month_range("2024-12").unwrap();
         assert_eq!(start.to_string(), "2024-12-01");
         assert_eq!(end.to_string(), "2024-12-31");
     }

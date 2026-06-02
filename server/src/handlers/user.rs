@@ -1,12 +1,11 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use chrono::{NaiveDate, Utc};
 use tower_sessions::Session;
 
 use super::{
-    get_order, get_page, get_period, get_sort, parse_month_range, require_login, resolve_period,
-    snap_to_month_start, AppError, AppState, PeriodParams,
+    get_order, get_page, get_period, get_sort, parse_date, parse_month_range, require_login,
+    resolve_period, snap_to_month_start, AppError, AppState, PeriodParams,
 };
 use crate::pages;
 use crate::service::CostService;
@@ -226,28 +225,12 @@ pub async fn render_user_hub(
     }
 
     let period = get_period(&params);
-    let user_info = state.service.get_user_info(&user_id).await?;
-    match user_info {
-        Some(info) => {
-            Ok(Html(pages::users::render_hub(&state.base_path, &period, &info)).into_response())
-        }
-        None => {
-            let user_email = state
-                .service
-                .get_user_email(&user_id)
-                .await?
-                .unwrap_or_else(|| "unknown".to_string());
-            let info = common::UserInfo {
-                user_id: user_id.clone(),
-                user_email,
-                created_at: String::new(),
-                api_key_count: 0,
-                active_api_key_count: 0,
-                inference_profile_count: 0,
-            };
-            Ok(Html(pages::users::render_hub(&state.base_path, &period, &info)).into_response())
-        }
-    }
+    let user_info = match state.service.get_user_info(&user_id).await? {
+        Some(info) => info,
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+    };
+
+    Ok(Html(pages::users::render_hub(&state.base_path, &period, &user_info)).into_response())
 }
 
 pub async fn render_user_daily_costs(
@@ -278,7 +261,7 @@ pub async fn render_user_daily_costs(
         .service
         .get_user_email(&user_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
     let costs = state
         .service
         .get_daily_cost_for_user_id(start, end, &user_id)
@@ -324,7 +307,7 @@ pub async fn render_user_monthly_costs(
         .service
         .get_user_email(&user_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
     let costs = state
         .service
         .get_monthly_cost_for_user_id(snap_to_month_start(start), end, &user_id)
@@ -369,31 +352,13 @@ pub async fn render_model_hub(
         return Ok(forbidden());
     }
 
-    let model_info = state.service.get_model_info(&model_id).await?;
-    match model_info {
-        Some(mut info) => {
-            info.user_count = 1;
-            Ok(Html(pages::models::render_hub(&state.base_path, &period, &info)).into_response())
-        }
-        None => {
-            let model_name = state
-                .service
-                .get_model_name(&model_id)
-                .await?
-                .unwrap_or_else(|| "unknown".to_string());
-            let info = common::ModelInfo {
-                model_id: model_id.clone(),
-                model_name,
-                is_disabled: false,
-                protected: false,
-                user_count: 1,
-            };
-            Ok(
-                Html(pages::models::render_hub(&state.base_path, &period, &info))
-                    .into_response(),
-            )
-        }
-    }
+    let mut model_info = match state.service.get_model_info(&model_id).await? {
+        Some(info) => info,
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+    };
+    model_info.user_count = 1;
+
+    Ok(Html(pages::models::render_hub(&state.base_path, &period, &model_info)).into_response())
 }
 
 pub async fn render_model_daily_costs(
@@ -421,7 +386,7 @@ pub async fn render_model_daily_costs(
         .service
         .get_model_name(&model_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
     let costs = state
         .service
         .get_daily_cost_for_user_id_and_model_id(start, end, &uid, &model_id)
@@ -464,7 +429,7 @@ pub async fn render_model_monthly_costs(
         .service
         .get_model_name(&model_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
     let costs = state
         .service
         .get_monthly_cost_for_user_id_and_model_id(snap_to_month_start(start), end, &uid, &model_id)
@@ -501,8 +466,10 @@ pub async fn render_date_hub(
     };
 
     let period = get_period(&params);
-    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive());
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(resp),
+    };
     let next_day = date_nd + chrono::Duration::days(1);
 
     let daily_cost = state
@@ -555,8 +522,10 @@ pub async fn render_date_users(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive());
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(resp),
+    };
     let next_day = date_nd + chrono::Duration::days(1);
 
     let costs = state
@@ -595,8 +564,10 @@ pub async fn render_date_models(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive());
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(resp),
+    };
     let next_day = date_nd + chrono::Duration::days(1);
 
     let costs = state
@@ -638,14 +609,16 @@ pub async fn render_date_models_for_user(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive());
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(resp),
+    };
     let next_day = date_nd + chrono::Duration::days(1);
     let user_email = state
         .service
         .get_user_email(&user_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
     let costs = state
         .service
         .get_cost_by_models_for_user_id(date_nd, next_day, &user_id)
@@ -683,14 +656,16 @@ pub async fn render_date_users_for_model(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let date_nd = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Utc::now().date_naive());
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(resp),
+    };
     let next_day = date_nd + chrono::Duration::days(1);
     let model_name = state
         .service
         .get_model_name(&model_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
     let costs = state
         .service
         .get_cost_by_user_id_for_model_id(date_nd, next_day, &uid, &model_id)
@@ -763,7 +738,10 @@ pub async fn render_month_hub(
     };
 
     let period = get_period(&params);
-    let (start, end) = parse_month_range(&month);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
 
     let daily_cost = state
         .service
@@ -815,7 +793,10 @@ pub async fn render_month_users(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let (start, end) = parse_month_range(&month);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
 
     let costs = state
         .service
@@ -853,7 +834,10 @@ pub async fn render_month_models(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let (start, end) = parse_month_range(&month);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
 
     let costs = state
         .service
@@ -894,12 +878,15 @@ pub async fn render_month_models_for_user(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let (start, end) = parse_month_range(&month);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
     let user_email = state
         .service
         .get_user_email(&user_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
     let costs = state
         .service
         .get_cost_by_models_for_user_id(start, end, &user_id)
@@ -937,12 +924,15 @@ pub async fn render_month_users_for_model(
     let page = get_page(&params);
     let sort = get_sort(&params);
     let order = get_order(&params);
-    let (start, end) = parse_month_range(&month);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(r) => r,
+        Err(resp) => return Ok(resp),
+    };
     let model_name = state
         .service
         .get_model_name(&model_id)
         .await?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
     let costs = state
         .service
         .get_cost_by_user_id_for_model_id(start, end, &uid, &model_id)
