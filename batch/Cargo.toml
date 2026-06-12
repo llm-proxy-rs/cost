@@ -11,10 +11,10 @@ path = "src/main.rs"
 common = { path = "../common" }
 db = { path = "../db" }
 ce = { path = "../ce" }
-tokio = { version = "1.49.0", features = ["full"] }
-chrono = "0.4.44"
+tokio = { version = "1.52.3", features = ["full"] }
+chrono = "0.4.45"
 anyhow = "1.0.102"
-env_logger = "0.11.9"
-log = "0.4.29"
-config = "0.15.19"
+env_logger = "0.11.10"
+log = "0.4.32"
+config = "0.15.23"
 serde = { version = "1.0.228", features = ["derive"] }

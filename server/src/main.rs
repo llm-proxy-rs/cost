@@ -6,6 +6,11 @@ pub mod service;
 #[cfg(test)]
 mod tests;
 
+use axum::body::Body;
+use axum::extract::{Request, State};
+use axum::http::header;
+use axum::middleware::{from_fn_with_state, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use clap::Parser;
@@ -13,7 +18,7 @@ use handlers::AppState;
 use myhandlers::{callback, login, logout};
 use service::RealCostService;
 use std::sync::Arc;
-use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
+use tower_sessions::{ExpiredDeletion, Expiry, Session, SessionManagerLayer};
 
 use crate::config::load_config;
 
@@ -44,7 +49,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/", get(handlers::render_home))
         .route("/costs/daily", get(handlers::render_daily_costs))
         .route("/costs/daily/{date}", get(handlers::render_date_hub))
-        .route("/costs/daily/{date}/users", get(handlers::render_date_users))
+        .route(
+            "/costs/daily/{date}/users",
+            get(handlers::render_date_users),
+        )
         .route(
             "/costs/daily/{date}/users/{user_id}",
             get(handlers::render_date_models_for_user),
@@ -75,15 +83,43 @@ pub fn build_router(state: AppState) -> Router {
             "/costs/monthly/{month}/models/{model_id}",
             get(handlers::render_month_users_for_model),
         )
+        .route("/costs/github", get(handlers::render_github_costs))
+        .route("/costs/github/orgs", get(handlers::render_github_orgs))
+        .route("/costs/github/repos", get(handlers::render_github_repos))
+        .route("/costs/github/orgs/{org}", get(handlers::render_github_org))
+        .route(
+            "/costs/github/orgs/{org}/{repo}",
+            get(handlers::render_github_repo_hub),
+        )
+        .route(
+            "/costs/github/orgs/{org}/{repo}/daily",
+            get(handlers::render_github_repo_daily),
+        )
+        .route(
+            "/costs/github/orgs/{org}/{repo}/monthly",
+            get(handlers::render_github_repo_monthly),
+        )
+        .route("/mode/legacy", get(handlers::set_mode_legacy))
+        .route("/mode/normal", get(handlers::set_mode_normal))
         .route("/users", get(handlers::render_users))
         .route("/models", get(handlers::render_models))
         .route("/users/{id}", get(handlers::render_user_hub))
         .route("/models/{id}", get(handlers::render_model_hub))
         .route("/users/{id}/daily", get(handlers::render_user_daily_costs))
-        .route("/users/{id}/monthly", get(handlers::render_user_monthly_costs))
-        .route("/models/{id}/daily", get(handlers::render_model_daily_costs))
-        .route("/models/{id}/monthly", get(handlers::render_model_monthly_costs))
-        .with_state(state);
+        .route(
+            "/users/{id}/monthly",
+            get(handlers::render_user_monthly_costs),
+        )
+        .route(
+            "/models/{id}/daily",
+            get(handlers::render_model_daily_costs),
+        )
+        .route(
+            "/models/{id}/monthly",
+            get(handlers::render_model_monthly_costs),
+        )
+        .with_state(state.clone())
+        .layer(from_fn_with_state(state, inject_top_bar));
 
     let cost_routes = if base == "/" {
         cost_routes
@@ -98,6 +134,63 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(auth_state)
         .merge(health_route)
         .merge(cost_routes)
+}
+
+/// Response middleware: insert the top navigation bar into every HTML page served by the
+/// cost routes. Reads the base path from state and the legacy-view flag from the session.
+async fn inject_top_bar(
+    State(state): State<AppState>,
+    session: Session,
+    req: Request,
+    next: Next,
+) -> Response {
+    let legacy_on = handlers::legacy_mode_active(&session).await;
+    let on_github = req.uri().path().contains("/costs/github");
+    let resp = next.run(req).await;
+
+    let is_html = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("text/html"))
+        .unwrap_or(false);
+    if !is_html {
+        return resp;
+    }
+
+    let (mut parts, body) = resp.into_parts();
+    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    let html = String::from_utf8_lossy(&bytes);
+
+    // `show_legacy` is false in the admin build (admin is its own build, no legacy toggle)
+    // and when no legacy email map is configured (the toggle would be a no-op). The default
+    // dashboard mode is labeled "Admin" in the admin build, "Normal" otherwise.
+    let show_legacy = cfg!(not(feature = "admin")) && !state.legacy_email_map.is_empty();
+    let normal_label = if cfg!(feature = "admin") {
+        "Admin"
+    } else {
+        "Normal"
+    };
+    let bar = templates::top_bar(
+        &state.base_path,
+        normal_label,
+        legacy_on,
+        show_legacy,
+        on_github,
+    );
+    let new_html = match html.find("<body>") {
+        Some(idx) => {
+            let at = idx + "<body>".len();
+            format!("{}{}{}", &html[..at], bar, &html[at..])
+        }
+        None => html.into_owned(),
+    };
+
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, Body::from(new_html))
 }
 
 #[tokio::main]
@@ -150,6 +243,11 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         service: Arc::new(service),
         base_path: app_config.base_path,
+        legacy_email_map: app_config
+            .legacy_email_map
+            .into_iter()
+            .map(|m| (m.from, m.to))
+            .collect(),
         cognito_client_id: app_config.cognito_client_id,
         cognito_client_secret: app_config.cognito_client_secret,
         cognito_domain: app_config.cognito_domain,

@@ -14,3 +14,11 @@ cognito_region = "us-east-1"
 cognito_user_pool_id = "us-east-1_xxxxxxxx"
 cognito_redirect_uri = "http://localhost:8080/callback"
 cognito_domain = "your-domain.auth.us-east-1.amazoncognito.com"
+
+# Legacy email-domain remap (used only by the `legacy` build, --features legacy).
+# A logged-in user's email ending with `from` is rewritten to `to` before their account
+# is looked up (so a migrated @example.com login resolves to the old @example.org
+# record) and is shown rewritten. One block per mapping.
+# [[legacy_email_map]]
+# from = "@example.com"
+# to = "@example.org"

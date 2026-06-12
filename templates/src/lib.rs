@@ -8,6 +8,52 @@ pub fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Renders the top navigation bar injected into every HTML page. It presents the view
+/// modes, bolding the active one. `normal_label` names the default dashboard mode
+/// ("Normal" in the user build, "Admin" in the admin build), `legacy_on` is the session's
+/// legacy flag, `show_legacy` hides the Legacy mode when no map is configured (or in the
+/// admin build), and `on_github` marks that the current page is the GitHub section.
+pub fn top_bar(
+    base_path: &str,
+    normal_label: &str,
+    legacy_on: bool,
+    show_legacy: bool,
+    on_github: bool,
+) -> String {
+    fn join(base: &str, suffix: &str) -> String {
+        if suffix.is_empty() {
+            return base.to_string();
+        }
+        format!("{}{}", base.trim_end_matches('/'), suffix)
+    }
+    fn item(active: bool, label: &str, href: String) -> String {
+        if active {
+            format!("<b>{}</b>", label)
+        } else {
+            format!(r#"<a href="{}">{}</a>"#, html_escape(&href), label)
+        }
+    }
+
+    let normal_active = !on_github && !legacy_on;
+    let legacy_active = !on_github && legacy_on;
+
+    let mut items = vec![item(
+        normal_active,
+        normal_label,
+        join(base_path, "/mode/normal"),
+    )];
+    if show_legacy {
+        items.push(item(
+            legacy_active,
+            "Legacy",
+            join(base_path, "/mode/legacy"),
+        ));
+    }
+    items.push(item(on_github, "GitHub", join(base_path, "/costs/github")));
+
+    format!(r#"<nav class="top-bar">{}</nav>"#, items.join(" "))
+}
+
 pub fn period_links(path: &str, active: &str) -> String {
     let periods = [
         ("7d", "Past 7 Days"),
@@ -101,6 +147,8 @@ pub fn page_layout(title: &str, body_html: String) -> String {
 <title>{title}</title>
 <style>
 body {{ font-family: monospace; padding: 16px; }}
+nav.top-bar {{ margin-bottom: 16px; text-align: center; }}
+nav.top-bar a {{ margin: 0 8px; }}
 table {{ width: 100%; border-collapse: collapse; }}
 th {{ text-align: left; padding: 6px 8px; border-bottom: 1px solid #ccc; }}
 table.data-table th {{ cursor: pointer; user-select: none; }}
