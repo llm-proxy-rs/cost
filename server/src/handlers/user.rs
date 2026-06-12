@@ -80,6 +80,7 @@ pub async fn render_home(
         monthly_cost.len(),
         1,
         model_count,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -114,6 +115,7 @@ pub async fn render_daily_costs(
         &period,
         page,
         &daily_cost,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -155,6 +157,7 @@ pub async fn render_users(
         &costs,
         sort,
         &order,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -192,6 +195,7 @@ pub async fn render_models(
         &costs,
         sort,
         &order,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -226,6 +230,7 @@ pub async fn render_user_hub(
         &state.base_path,
         &period,
         &user_info,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -269,6 +274,7 @@ pub async fn render_user_daily_costs(
         &user_id,
         &user_email,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -314,6 +320,7 @@ pub async fn render_user_monthly_costs(
         &user_id,
         &user_email,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -353,6 +360,7 @@ pub async fn render_model_hub(
         &state.base_path,
         &period,
         &model_info,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -395,6 +403,7 @@ pub async fn render_model_daily_costs(
         &model_id,
         &model_name,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -437,6 +446,7 @@ pub async fn render_model_monthly_costs(
         &model_id,
         &model_name,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -488,6 +498,7 @@ pub async fn render_date_hub(
         currency,
         users.len(),
         models.len(),
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -528,6 +539,7 @@ pub async fn render_date_users(
         page,
         &date,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -570,6 +582,7 @@ pub async fn render_date_models(
         page,
         &date,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -619,6 +632,7 @@ pub async fn render_date_models_for_user(
         &date,
         &user_email,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -665,6 +679,7 @@ pub async fn render_date_users_for_model(
         &date,
         &model_name,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -703,6 +718,7 @@ pub async fn render_monthly_costs(
         &period,
         page,
         &monthly_cost,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -747,6 +763,7 @@ pub async fn render_month_hub(
         currency,
         users.len(),
         models.len(),
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -786,6 +803,7 @@ pub async fn render_month_users(
         page,
         &month,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -825,6 +843,7 @@ pub async fn render_month_models(
         page,
         &month,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -873,6 +892,7 @@ pub async fn render_month_models_for_user(
         &month,
         &user_email,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -918,6 +938,7 @@ pub async fn render_month_users_for_model(
         &month,
         &model_name,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }

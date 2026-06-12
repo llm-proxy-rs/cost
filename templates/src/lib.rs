@@ -1,6 +1,9 @@
 use leptos::either::Either;
 use leptos::prelude::*;
 
+/// Default cap on how many rows a CSV export gathers across pages.
+pub const DEFAULT_EXPORT_ROW_CAP: usize = 1000;
+
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -138,7 +141,7 @@ pub fn collapsible_block(content: &str, css_class: &str) -> String {
     )
 }
 
-pub fn page_layout(title: &str, body_html: String) -> String {
+pub fn page_layout(title: &str, body_html: String, export_row_cap: usize) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -206,29 +209,70 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
   }}
 }})();
 (function(){{
-  function exportCsv(table){{
-    var name=table.getAttribute('data-export-name')||'cost_export';
-    var rows=Array.from(table.querySelectorAll('tr'));
-    var csv=rows.map(function(row){{
-      return Array.from(row.querySelectorAll('th,td')).map(function(cell){{
-        var text=(cell.textContent||'').replace(/"/g,'""');
-        return '"'+text+'"';
-      }}).join(',');
-    }}).join('\n');
-    var blob=new Blob([csv],{{type:'text/csv;charset=utf-8;'}});
+  // Server paginates at 50 rows/page; export gathers across pages up to this cap.
+  var PAGE_SIZE=50, MAX_ROWS={max_rows};
+  function rowToCsv(row){{
+    return Array.from(row.querySelectorAll('th,td')).map(function(cell){{
+      var text=(cell.textContent||'').replace(/"/g,'""');
+      return '"'+text+'"';
+    }}).join(',');
+  }}
+  function download(table,lines){{
+    var blob=new Blob([lines.join('\n')],{{type:'text/csv;charset=utf-8;'}});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
+    var name=table.getAttribute('data-export-name')||'cost_export';
     var ds=table.getAttribute('data-start')||'';
     var de=table.getAttribute('data-end')||'';
-    var fname=name+(ds?'_'+ds:'')+(de?'_'+de:'')+'.csv';
-    a.href=url;a.download=fname;a.style.display='none';
+    a.href=url;a.download=name+(ds?'_'+ds:'')+(de?'_'+de:'')+'.csv';
+    a.style.display='none';
     document.body.appendChild(a);a.click();
     document.body.removeChild(a);URL.revokeObjectURL(url);
+  }}
+  function exportCurrentPage(table){{
+    download(table,Array.from(table.querySelectorAll('tr')).map(rowToCsv));
+  }}
+  async function exportAll(table,btn){{
+    var name=table.getAttribute('data-export-name');
+    if(!name){{exportCurrentPage(table);return;}}
+    var headerLine=null,dataLines=[],prevSig=null;
+    var label=btn.textContent;btn.disabled=true;btn.textContent='Exporting...';
+    try{{
+      // Reuse current sort/order/period params; only vary the page.
+      for(var p=1;p<=Math.ceil(MAX_ROWS/PAGE_SIZE)&&dataLines.length<MAX_ROWS;p++){{
+        var params=new URLSearchParams(window.location.search);
+        params.set('page',String(p));
+        var resp=await fetch(window.location.pathname+'?'+params.toString(),{{credentials:'same-origin'}});
+        if(!resp.ok)throw new Error('fetch failed: '+resp.status);
+        var doc=new DOMParser().parseFromString(await resp.text(),'text/html');
+        var t=Array.from(doc.querySelectorAll('table.data-table')).find(function(x){{
+          return x.getAttribute('data-export-name')===name;
+        }});
+        if(!t)break;
+        var trs=Array.from(t.querySelectorAll('tr'));
+        var headers=trs.filter(function(r){{return r.querySelector('th');}});
+        var body=trs.filter(function(r){{return !r.querySelector('th')&&r.querySelector('td');}});
+        if(headerLine===null&&headers.length)headerLine=rowToCsv(headers[0]);
+        // The server clamps out-of-range pages to the last page; identical
+        // content means we've passed the end, so stop without duplicating.
+        var sig=body.map(function(r){{return r.textContent;}}).join('|');
+        if(sig===prevSig)break;
+        prevSig=sig;
+        body.forEach(function(r){{dataLines.push(rowToCsv(r));}});
+        if(body.length<PAGE_SIZE)break;
+      }}
+      if(dataLines.length>MAX_ROWS)dataLines=dataLines.slice(0,MAX_ROWS);
+      download(table,headerLine?[headerLine].concat(dataLines):dataLines);
+    }}catch(e){{
+      exportCurrentPage(table);
+    }}finally{{
+      btn.disabled=false;btn.textContent=label;
+    }}
   }}
   document.querySelectorAll('table.data-table').forEach(function(table){{
     var btn=document.createElement('button');
     btn.textContent='Export CSV';btn.className='export-csv-btn';
-    btn.addEventListener('click',function(){{exportCsv(table);}});
+    btn.addEventListener('click',function(){{exportAll(table,btn);}});
     table.parentNode.insertBefore(btn,table);
   }});
 }})();
@@ -236,7 +280,8 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
 </body>
 </html>"#,
         title = html_escape(title),
-        body_html = body_html
+        body_html = body_html,
+        max_rows = export_row_cap
     )
 }
 
@@ -342,7 +387,7 @@ impl Default for Page {
 }
 
 impl<C: IntoView> Page<C> {
-    pub fn render(self) -> String {
+    pub fn render(self, export_row_cap: usize) -> String {
         let Page {
             title,
             breadcrumbs,
@@ -416,7 +461,7 @@ impl<C: IntoView> Page<C> {
             }}
         };
 
-        page_layout(&title, body.to_html())
+        page_layout(&title, body.to_html(), export_row_cap)
     }
 }
 
@@ -464,7 +509,11 @@ line2</pre>"#
 
     #[test]
     fn page_layout_wraps_body() {
-        let result = page_layout("Test Title", "<p>body</p>".to_string());
+        let result = page_layout(
+            "Test Title",
+            "<p>body</p>".to_string(),
+            DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(result.contains("<title>Test Title</title>"));
         assert!(result.contains("<p>body</p>"));
         assert!(result.starts_with("<!DOCTYPE html>"));
@@ -472,8 +521,17 @@ line2</pre>"#
 
     #[test]
     fn page_layout_escapes_title() {
-        let result = page_layout("<script>", "".to_string());
+        let result = page_layout("<script>", "".to_string(), DEFAULT_EXPORT_ROW_CAP);
         assert!(result.contains("<title>&lt;script&gt;</title>"));
+    }
+
+    #[test]
+    fn page_layout_embeds_export_row_cap() {
+        // The CSV export JS must carry the configured cap.
+        let result = page_layout("T", String::new(), 250);
+        assert!(result.contains("MAX_ROWS=250"));
+        assert!(result.contains("async function exportAll"));
+        assert!(result.contains("getAttribute('data-export-name')"));
     }
 
     #[test]
@@ -511,7 +569,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<h1>"));
         assert!(html.contains(r#"<a href="/">"#));
         assert!(html.contains("Home"));
@@ -530,7 +588,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<h2>Navigation</h2>"));
         assert!(html.contains(r#"<a href="/edit">"#));
         assert!(html.contains("Edit"));
@@ -548,7 +606,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<h2>Info</h2>"));
         assert!(html.contains("Key"));
         assert!(html.contains("&lt;value&gt;"));
@@ -565,7 +623,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<b>bold</b>"));
     }
 
@@ -579,7 +637,7 @@ line2</pre>"#
             content: view! { <form><input type="text" name="x"/></form> },
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<form>"));
         assert!(html.contains(r#"name="x""#));
     }
@@ -594,7 +652,7 @@ line2</pre>"#
             content: (),
             subpages: vec![Subpage::new("Requests", "/requests", 42)],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<h2>Subpages</h2>"));
         assert!(html.contains("Page"));
         assert!(html.contains("Count"));
@@ -613,7 +671,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(!html.contains("<h1>"));
         assert!(!html.contains("Navigation"));
         assert!(!html.contains("Info"));
@@ -630,7 +688,7 @@ line2</pre>"#
             content: view! { <p>"content"</p> },
             subpages: vec![Subpage::new("Sub", "/sub", 5)],
         }
-        .render();
+        .render(DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<title>Full Page</title>"));
         assert!(html.contains("<h1>"));
         assert!(html.contains("Navigation"));

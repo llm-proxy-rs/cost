@@ -13,6 +13,7 @@ pub fn render_hub(
     currency: &str,
     org_count: usize,
     repo_count: usize,
+    export_row_cap: usize,
 ) -> String {
     Page {
         title: "Cost Explorer - GitHub".to_string(),
@@ -42,7 +43,7 @@ pub fn render_hub(
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 /// By Org: cost grouped by GithubOrgName, each org clickable.
@@ -53,6 +54,7 @@ pub fn render_orgs(
     orgs: &[GithubOrgCost],
     sort: Option<usize>,
     order: &str,
+    export_row_cap: usize,
 ) -> String {
     let mut orgs = orgs.to_vec();
     let empty = orgs.is_empty();
@@ -139,7 +141,7 @@ pub fn render_orgs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 /// By Repo: flat cost grouped by GithubOrgName + GithubRepoName, each repo clickable.
@@ -150,6 +152,7 @@ pub fn render_repos(
     costs: &[CostByGithub],
     sort: Option<usize>,
     order: &str,
+    export_row_cap: usize,
 ) -> String {
     let mut costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -240,7 +243,7 @@ pub fn render_repos(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 /// Repos for one org, each repo clickable.
@@ -252,6 +255,7 @@ pub fn render_org(
     repos: &[CostByGithub],
     sort: Option<usize>,
     order: &str,
+    export_row_cap: usize,
 ) -> String {
     let mut repos = repos.to_vec();
     let empty = repos.is_empty();
@@ -350,7 +354,7 @@ pub fn render_org(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 /// Repo hub: info + Daily / Monthly subpages.
@@ -361,6 +365,7 @@ pub fn render_repo_hub(
     repo: &str,
     total_cost: f64,
     currency: &str,
+    export_row_cap: usize,
 ) -> String {
     Page {
         title: format!("Cost Explorer - GitHub - {}/{}", org, repo),
@@ -408,7 +413,7 @@ pub fn render_repo_hub(
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 /// Daily (or monthly) cost breakdown for one org/repo. `monthly` selects the label/paths.
@@ -420,6 +425,7 @@ fn render_repo_costs(
     repo: &str,
     costs: &[CostRecord],
     monthly: bool,
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -520,7 +526,7 @@ fn render_repo_costs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_repo_daily(
@@ -530,8 +536,9 @@ pub fn render_repo_daily(
     org: &str,
     repo: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
-    render_repo_costs(base, period, page, org, repo, costs, false)
+    render_repo_costs(base, period, page, org, repo, costs, false, export_row_cap)
 }
 
 pub fn render_repo_monthly(
@@ -541,8 +548,9 @@ pub fn render_repo_monthly(
     org: &str,
     repo: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
-    render_repo_costs(base, period, page, org, repo, costs, true)
+    render_repo_costs(base, period, page, org, repo, costs, true, export_row_cap)
 }
 
 #[cfg(test)]
@@ -583,7 +591,15 @@ mod tests {
 
     #[test]
     fn render_hub_has_two_dimension_subpages() {
-        let html = render_hub("/", "30d", 3521.44, "USD", 2, 6);
+        let html = render_hub(
+            "/",
+            "30d",
+            3521.44,
+            "USD",
+            2,
+            6,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<title>Cost Explorer - GitHub</title>"));
         assert!(html.contains(">Orgs</a>"));
         assert!(html.contains(">Repos</a>"));
@@ -597,7 +613,15 @@ mod tests {
 
     #[test]
     fn render_orgs_lists_and_links() {
-        let html = render_orgs("/", "30d", 1, &orgs(), None, "asc");
+        let html = render_orgs(
+            "/",
+            "30d",
+            1,
+            &orgs(),
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost by GitHub Org"));
         assert!(html.contains("acme-corp"));
         assert!(html.contains("2387.21 USD"));
@@ -606,7 +630,15 @@ mod tests {
 
     #[test]
     fn render_repos_flat_lists_and_links() {
-        let html = render_repos("/", "30d", 1, &repos(), None, "asc");
+        let html = render_repos(
+            "/",
+            "30d",
+            1,
+            &repos(),
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost by GitHub Repo"));
         assert!(html.contains("acme-corp"));
         assert!(html.contains("platform-api"));
@@ -616,7 +648,16 @@ mod tests {
 
     #[test]
     fn render_org_lists_repos() {
-        let html = render_org("/", "30d", 1, "acme-corp", &repos(), None, "asc");
+        let html = render_org(
+            "/",
+            "30d",
+            1,
+            "acme-corp",
+            &repos(),
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Repos for "));
         assert!(html.contains("platform-api"));
         assert!(html.contains("/costs/github/orgs/acme-corp/platform-api"));
@@ -624,7 +665,15 @@ mod tests {
 
     #[test]
     fn render_repo_hub_has_subpages() {
-        let html = render_repo_hub("/", "30d", "acme-corp", "platform-api", 1284.57, "USD");
+        let html = render_repo_hub(
+            "/",
+            "30d",
+            "acme-corp",
+            "platform-api",
+            1284.57,
+            "USD",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("Monthly Cost"));
         assert!(html.contains("/costs/github/orgs/acme-corp/platform-api/daily"));
@@ -638,7 +687,15 @@ mod tests {
             amount: 12.34,
             currency: "USD".to_string(),
         }];
-        let html = render_repo_daily("/", "30d", 1, "acme-corp", "platform-api", &costs);
+        let html = render_repo_daily(
+            "/",
+            "30d",
+            1,
+            "acme-corp",
+            "platform-api",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("12.34 USD"));
@@ -651,7 +708,15 @@ mod tests {
             amount: 69.12,
             currency: "USD".to_string(),
         }];
-        let html = render_repo_monthly("/", "30d", 1, "acme-corp", "platform-api", &costs);
+        let html = render_repo_monthly(
+            "/",
+            "30d",
+            1,
+            "acme-corp",
+            "platform-api",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Monthly Cost"));
         assert!(html.contains("2024-01"));
         assert!(html.contains("69.12 USD"));
@@ -659,7 +724,15 @@ mod tests {
 
     #[test]
     fn render_uses_custom_base_path() {
-        let html = render_hub("/_dashboard", "30d", 0.0, "USD", 0, 0);
+        let html = render_hub(
+            "/_dashboard",
+            "30d",
+            0.0,
+            "USD",
+            0,
+            0,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/costs/github/orgs"));
         assert!(html.contains("/_dashboard/costs/github/repos"));
     }
