@@ -1,19 +1,18 @@
-use super::{make_path, paginate, with_period, PAGE_SIZE};
+use super::{make_path, paginate, with_period, PageContext, TableSort, PAGE_SIZE};
 use common::{CostByModel, CostRecord, ModelInfo};
 use leptos::either::Either;
 use leptos::prelude::*;
 use templates::{pagination_nav, period_links, Breadcrumb, InfoRow, NavLink, Page, Subpage};
 
 pub fn render_index(
-    base: &str,
-    period: &str,
+    ctx: &PageContext<'_>,
     page: usize,
     models: &[ModelInfo],
     costs: &[CostByModel],
-    sort: Option<usize>,
-    order: &str,
-    export_row_cap: usize,
+    sort: TableSort<'_>,
 ) -> String {
+    let base = ctx.base;
+    let period = ctx.period;
     let models = models.to_vec();
     let costs = costs.to_vec();
     let empty = models.is_empty() && costs.is_empty();
@@ -81,8 +80,8 @@ pub fn render_index(
 
     let total_rows = rows.len();
     // Sort rows before paginating
-    if let Some(col) = sort {
-        let desc = order == "desc";
+    if let Some(col) = sort.column {
+        let desc = sort.order == "desc";
         rows.sort_by(|a, b| {
             let cmp = match col {
                 0 => a.display.cmp(&b.display),
@@ -164,10 +163,15 @@ pub fn render_index(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(ctx.csv_export)
 }
 
-pub fn render_hub(base: &str, period: &str, model: &ModelInfo, export_row_cap: usize) -> String {
+pub fn render_hub(
+    base: &str,
+    period: &str,
+    model: &ModelInfo,
+    csv_export: templates::CsvExportLimit,
+) -> String {
     let status = if model.is_disabled {
         "Disabled"
     } else {
@@ -210,7 +214,7 @@ pub fn render_hub(base: &str, period: &str, model: &ModelInfo, export_row_cap: u
             ),
         ],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_daily_costs(
@@ -220,7 +224,7 @@ pub fn render_daily_costs(
     model_id: &str,
     model_name: &str,
     costs: &[CostRecord],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -293,7 +297,7 @@ pub fn render_daily_costs(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_monthly_costs(
@@ -303,7 +307,7 @@ pub fn render_monthly_costs(
     model_id: &str,
     model_name: &str,
     costs: &[CostRecord],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -377,25 +381,37 @@ pub fn render_monthly_costs(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn test_ctx(base: &str) -> PageContext<'_> {
+        PageContext::new(base, "30d", templates::CsvExportLimit::DEFAULT)
+    }
+
+    fn test_index(
+        base: &str,
+        page: usize,
+        models: &[ModelInfo],
+        costs: &[CostByModel],
+        sort: Option<usize>,
+        order: &str,
+    ) -> String {
+        render_index(
+            &test_ctx(base),
+            page,
+            models,
+            costs,
+            TableSort::new(sort, order),
+        )
+    }
+
     #[test]
     fn render_index_empty() {
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &[],
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &[], &[], None, "asc");
         assert!(html.contains("No models found."));
         assert!(html.contains("Cost Explorer - Models"));
     }
@@ -415,16 +431,7 @@ mod tests {
             amount: 100.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &models,
-            &costs,
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &models, &costs, None, "asc");
         assert!(html.contains("claude-3"));
         assert!(html.contains("100.00 USD"));
         assert!(html.contains("Active"));
@@ -434,16 +441,7 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &[],
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &[], &[], None, "asc");
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -457,16 +455,7 @@ mod tests {
             protected: false,
             user_count: 1,
         }];
-        let html = render_index(
-            "/_dashboard",
-            "30d",
-            1,
-            &models,
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/_dashboard", 1, &models, &[], None, "asc");
         assert!(html.contains("/_dashboard/models/model-1"));
     }
 
@@ -479,7 +468,7 @@ mod tests {
             protected: true,
             user_count: 5,
         };
-        let html = render_hub("/", "30d", &model, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render_hub("/", "30d", &model, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("claude-3"));
         assert!(html.contains("model-1"));
         assert!(html.contains("Active"));
@@ -497,7 +486,7 @@ mod tests {
             "model-1",
             "claude-3",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this model"));
     }
@@ -516,7 +505,7 @@ mod tests {
             "model-1",
             "claude-3",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("75.00 USD"));
@@ -532,7 +521,7 @@ mod tests {
             "model-1",
             "claude-3",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this model"));
     }
@@ -551,7 +540,7 @@ mod tests {
             "model-1",
             "claude-3",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("2024-01"));
         assert!(html.contains("500.00 USD"));

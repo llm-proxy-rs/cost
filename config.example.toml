@@ -4,7 +4,7 @@ port = 8080
 base_path = "/"
 
 # Max rows a CSV export gathers across pages (optional, default 1000)
-export_row_cap = 1000
+csv_export_max_rows = 1000
 
 # Database Configuration
 database_url_gateway_ro = "postgres://postgres:postgres@localhost/gateway"

@@ -411,7 +411,7 @@ fn mock_state(base: &str) -> AppState {
     AppState {
         service: Arc::new(MockCostService::new()),
         base_path: base.to_string(),
-        export_row_cap: templates::DEFAULT_EXPORT_ROW_CAP,
+        csv_export: templates::CsvExportLimit::DEFAULT,
         legacy_email_map: Vec::new(),
         cognito_client_id: String::new(),
         cognito_client_secret: String::new(),
@@ -427,7 +427,7 @@ fn mock_state_no_profile() -> AppState {
     AppState {
         service: Arc::new(MockCostService::no_profile()),
         base_path: "/".to_string(),
-        export_row_cap: templates::DEFAULT_EXPORT_ROW_CAP,
+        csv_export: templates::CsvExportLimit::DEFAULT,
         legacy_email_map: Vec::new(),
         cognito_client_id: String::new(),
         cognito_client_secret: String::new(),

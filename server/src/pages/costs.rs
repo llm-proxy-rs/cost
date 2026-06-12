@@ -1,4 +1,4 @@
-use super::{make_path, paginate, with_period, PAGE_SIZE};
+use super::{make_path, paginate, with_period, CostTotal, PageContext, SubpageCounts, PAGE_SIZE};
 use common::{CostByModel, CostByUser, CostRecord};
 use leptos::either::Either;
 use leptos::prelude::*;
@@ -9,7 +9,7 @@ pub fn render(
     period: &str,
     page: usize,
     daily_cost: &[CostRecord],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let daily_cost = daily_cost.to_vec();
     let total: f64 = daily_cost.iter().map(|r| r.amount).sum();
@@ -75,49 +75,51 @@ pub fn render(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_hub(
-    base: &str,
-    period: &str,
+    ctx: &PageContext<'_>,
     date: &str,
-    total_cost: f64,
-    currency: &str,
-    user_count: usize,
-    model_count: usize,
-    export_row_cap: usize,
+    total: CostTotal<'_>,
+    counts: SubpageCounts,
 ) -> String {
     Page {
         title: format!("Cost Explorer - {}", date),
         breadcrumbs: vec![
-            Breadcrumb::link("Cost Explorer", with_period(&make_path(base, ""), period)),
+            Breadcrumb::link(
+                "Cost Explorer",
+                with_period(&make_path(ctx.base, ""), ctx.period),
+            ),
             Breadcrumb::link(
                 "Daily Cost",
-                with_period(&make_path(base, "/costs/daily"), period),
+                with_period(&make_path(ctx.base, "/costs/daily"), ctx.period),
             ),
             Breadcrumb::current(date),
         ],
         nav_links: vec![NavLink::back()],
         info_rows: vec![
             InfoRow::new("Date", date),
-            InfoRow::new("Total Cost", &format!("{:.2} {}", total_cost, currency)),
+            InfoRow::new(
+                "Total Cost",
+                &format!("{:.2} {}", total.amount, total.currency),
+            ),
         ],
         content: (),
         subpages: vec![
             Subpage::new(
                 "By User",
-                make_path(base, &format!("/costs/daily/{}/users", date)),
-                user_count,
+                make_path(ctx.base, &format!("/costs/daily/{}/users", date)),
+                counts.by_user,
             ),
             Subpage::new(
                 "By Model",
-                make_path(base, &format!("/costs/daily/{}/models", date)),
-                model_count,
+                make_path(ctx.base, &format!("/costs/daily/{}/models", date)),
+                counts.by_model,
             ),
         ],
     }
-    .render(export_row_cap)
+    .render(ctx.csv_export)
 }
 
 pub fn render_users(
@@ -126,7 +128,7 @@ pub fn render_users(
     page: usize,
     date: &str,
     costs: &[CostByUser],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -191,7 +193,7 @@ pub fn render_users(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_models(
@@ -200,7 +202,7 @@ pub fn render_models(
     page: usize,
     date: &str,
     costs: &[CostByModel],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -265,7 +267,7 @@ pub fn render_models(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_user_models(
@@ -275,7 +277,7 @@ pub fn render_user_models(
     date: &str,
     user_email: &str,
     costs: &[CostByModel],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -342,7 +344,7 @@ pub fn render_user_models(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_model_users(
@@ -352,7 +354,7 @@ pub fn render_model_users(
     date: &str,
     model_name: &str,
     costs: &[CostByUser],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -422,12 +424,28 @@ pub fn render_model_users(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_ctx(base: &str) -> PageContext<'_> {
+        PageContext::new(base, "30d", templates::CsvExportLimit::DEFAULT)
+    }
+
+    fn test_hub(base: &str, date: &str, amount: f64, by_user: usize, by_model: usize) -> String {
+        render_hub(
+            &test_ctx(base),
+            date,
+            CostTotal {
+                amount,
+                currency: "USD",
+            },
+            SubpageCounts { by_user, by_model },
+        )
+    }
 
     #[test]
     fn render_contains_title() {
@@ -436,20 +454,20 @@ mod tests {
             amount: 123.45,
             currency: "USD".to_string(),
         }];
-        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &daily, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("<title>Cost Explorer - Daily Cost</title>"));
     }
 
     #[test]
     fn render_contains_breadcrumbs() {
-        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &[], templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
     }
 
     #[test]
     fn render_contains_period_links() {
-        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &[], templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -461,7 +479,7 @@ mod tests {
             amount: 99.99,
             currency: "USD".to_string(),
         }];
-        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &daily, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("99.99 USD"));
     }
 
@@ -479,7 +497,7 @@ mod tests {
                 currency: "USD".to_string(),
             },
         ];
-        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &daily, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("2024-01-16"));
         assert!(html.contains("50.00 USD"));
@@ -488,7 +506,7 @@ mod tests {
 
     #[test]
     fn render_empty_daily_cost() {
-        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &[], templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("No cost data found for this period."));
     }
 
@@ -499,7 +517,7 @@ mod tests {
             "30d",
             1,
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("/_dashboard/costs/daily"));
     }
@@ -518,7 +536,7 @@ mod tests {
                 currency: "USD".to_string(),
             },
         ];
-        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render("/", "30d", 1, &daily, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("/costs/daily/2024-01-15"));
         assert!(html.contains("/costs/daily/2024-01-16"));
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15\">"));
@@ -537,38 +555,20 @@ mod tests {
             "30d",
             1,
             &daily,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15"));
     }
 
     #[test]
     fn render_hub_contains_title() {
-        let html = render_hub(
-            "/",
-            "30d",
-            "2024-01-15",
-            123.45,
-            "USD",
-            3,
-            2,
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_hub("/", "2024-01-15", 123.45, 3, 2);
         assert!(html.contains("<title>Cost Explorer - 2024-01-15</title>"));
     }
 
     #[test]
     fn render_hub_contains_breadcrumbs() {
-        let html = render_hub(
-            "/",
-            "30d",
-            "2024-01-15",
-            123.45,
-            "USD",
-            3,
-            2,
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_hub("/", "2024-01-15", 123.45, 3, 2);
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
@@ -576,32 +576,14 @@ mod tests {
 
     #[test]
     fn render_hub_contains_info_rows() {
-        let html = render_hub(
-            "/",
-            "30d",
-            "2024-01-15",
-            123.45,
-            "USD",
-            3,
-            2,
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_hub("/", "2024-01-15", 123.45, 3, 2);
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("123.45 USD"));
     }
 
     #[test]
     fn render_hub_contains_subpage_links() {
-        let html = render_hub(
-            "/",
-            "30d",
-            "2024-01-15",
-            123.45,
-            "USD",
-            3,
-            2,
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_hub("/", "2024-01-15", 123.45, 3, 2);
         assert!(html.contains("By User"));
         assert!(html.contains("By Model"));
         assert!(html.contains("/costs/daily/2024-01-15/users"));
@@ -610,16 +592,7 @@ mod tests {
 
     #[test]
     fn render_hub_custom_base() {
-        let html = render_hub(
-            "/_dashboard",
-            "30d",
-            "2024-01-15",
-            50.0,
-            "USD",
-            1,
-            1,
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_hub("/_dashboard", "2024-01-15", 50.0, 1, 1);
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15/users"));
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15/models"));
     }
@@ -632,7 +605,7 @@ mod tests {
             1,
             "2024-01-15",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this date."));
     }
@@ -651,7 +624,7 @@ mod tests {
             1,
             "2024-01-15",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("42.00 USD"));
@@ -666,7 +639,7 @@ mod tests {
             1,
             "2024-01-15",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
@@ -688,7 +661,7 @@ mod tests {
             1,
             "2024-01-15",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15/users/user-1\">"));
     }
@@ -701,7 +674,7 @@ mod tests {
             1,
             "2024-01-15",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this date."));
     }
@@ -720,7 +693,7 @@ mod tests {
             1,
             "2024-01-15",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("claude-3"));
         assert!(html.contains("55.00 USD"));
@@ -735,7 +708,7 @@ mod tests {
             1,
             "2024-01-15",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
@@ -757,7 +730,7 @@ mod tests {
             1,
             "2024-01-15",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15/models/model-1\">"));
     }
@@ -771,7 +744,7 @@ mod tests {
             "2024-01-15",
             "alice@example.com",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found."));
     }
@@ -791,7 +764,7 @@ mod tests {
             "2024-01-15",
             "alice@example.com",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("claude-3"));
         assert!(html.contains("30.00 USD"));
@@ -808,7 +781,7 @@ mod tests {
             "2024-01-15",
             "alice@example.com",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
@@ -826,7 +799,7 @@ mod tests {
             "2024-01-15",
             "claude-3",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found."));
     }
@@ -846,7 +819,7 @@ mod tests {
             "2024-01-15",
             "claude-3",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("25.00 USD"));
@@ -863,7 +836,7 @@ mod tests {
             "2024-01-15",
             "claude-3",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));

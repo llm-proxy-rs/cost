@@ -1,19 +1,18 @@
-use super::{make_path, paginate, with_period, PAGE_SIZE};
+use super::{make_path, paginate, with_period, PageContext, TableSort, PAGE_SIZE};
 use common::{CostByUser, CostRecord, UserInfo};
 use leptos::either::Either;
 use leptos::prelude::*;
 use templates::{pagination_nav, period_links, Breadcrumb, InfoRow, NavLink, Page, Subpage};
 
 pub fn render_index(
-    base: &str,
-    period: &str,
+    ctx: &PageContext<'_>,
     page: usize,
     users: &[UserInfo],
     costs: &[CostByUser],
-    sort: Option<usize>,
-    order: &str,
-    export_row_cap: usize,
+    sort: TableSort<'_>,
 ) -> String {
+    let base = ctx.base;
+    let period = ctx.period;
     let users = users.to_vec();
     let costs = costs.to_vec();
     let empty = users.is_empty() && costs.is_empty();
@@ -75,8 +74,8 @@ pub fn render_index(
 
     let total_rows = rows.len();
     // Sort rows before paginating
-    if let Some(col) = sort {
-        let desc = order == "desc";
+    if let Some(col) = sort.column {
+        let desc = sort.order == "desc";
         rows.sort_by(|a, b| {
             let cmp = match col {
                 0 => a.display.cmp(&b.display),
@@ -154,10 +153,15 @@ pub fn render_index(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(ctx.csv_export)
 }
 
-pub fn render_hub(base: &str, period: &str, user: &UserInfo, export_row_cap: usize) -> String {
+pub fn render_hub(
+    base: &str,
+    period: &str,
+    user: &UserInfo,
+    csv_export: templates::CsvExportLimit,
+) -> String {
     Page {
         title: format!("Cost Explorer - {}", user.user_email),
         breadcrumbs: vec![
@@ -191,7 +195,7 @@ pub fn render_hub(base: &str, period: &str, user: &UserInfo, export_row_cap: usi
             ),
         ],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_daily_costs(
@@ -201,7 +205,7 @@ pub fn render_daily_costs(
     user_id: &str,
     user_email: &str,
     costs: &[CostRecord],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -273,7 +277,7 @@ pub fn render_daily_costs(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 pub fn render_monthly_costs(
@@ -283,7 +287,7 @@ pub fn render_monthly_costs(
     user_id: &str,
     user_email: &str,
     costs: &[CostRecord],
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -356,25 +360,37 @@ pub fn render_monthly_costs(
         content,
         subpages: vec![],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn test_ctx(base: &str) -> PageContext<'_> {
+        PageContext::new(base, "30d", templates::CsvExportLimit::DEFAULT)
+    }
+
+    fn test_index(
+        base: &str,
+        page: usize,
+        users: &[UserInfo],
+        costs: &[CostByUser],
+        sort: Option<usize>,
+        order: &str,
+    ) -> String {
+        render_index(
+            &test_ctx(base),
+            page,
+            users,
+            costs,
+            TableSort::new(sort, order),
+        )
+    }
+
     #[test]
     fn render_index_empty() {
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &[],
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &[], &[], None, "asc");
         assert!(html.contains("No users found."));
         assert!(html.contains("Cost Explorer - Users"));
     }
@@ -395,16 +411,7 @@ mod tests {
             amount: 50.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &users,
-            &costs,
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &users, &costs, None, "asc");
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("50.00 USD"));
         assert!(html.contains("2/3")); // active/total api keys
@@ -413,16 +420,7 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index(
-            "/",
-            "30d",
-            1,
-            &[],
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/", 1, &[], &[], None, "asc");
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -437,16 +435,7 @@ mod tests {
             active_api_key_count: 1,
             inference_profile_count: 0,
         }];
-        let html = render_index(
-            "/_dashboard",
-            "30d",
-            1,
-            &users,
-            &[],
-            None,
-            "asc",
-            templates::DEFAULT_EXPORT_ROW_CAP,
-        );
+        let html = test_index("/_dashboard", 1, &users, &[], None, "asc");
         assert!(html.contains("/_dashboard/users/abc-123"));
     }
 
@@ -460,7 +449,7 @@ mod tests {
             active_api_key_count: 2,
             inference_profile_count: 5,
         };
-        let html = render_hub("/", "30d", &user, templates::DEFAULT_EXPORT_ROW_CAP);
+        let html = render_hub("/", "30d", &user, templates::CsvExportLimit::DEFAULT);
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("abc-123"));
         assert!(html.contains("2024-01-01"));
@@ -477,7 +466,7 @@ mod tests {
             "abc-123",
             "alice@example.com",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this user"));
     }
@@ -496,7 +485,7 @@ mod tests {
             "abc-123",
             "alice@example.com",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("42.00 USD"));
@@ -512,7 +501,7 @@ mod tests {
             "abc-123",
             "alice@example.com",
             &[],
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("No cost data found for this user"));
     }
@@ -531,7 +520,7 @@ mod tests {
             "abc-123",
             "alice@example.com",
             &costs,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("2024-01"));
         assert!(html.contains("500.00 USD"));

@@ -243,7 +243,9 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         service: Arc::new(service),
         base_path: app_config.base_path,
-        export_row_cap: app_config.export_row_cap,
+        csv_export: templates::CsvExportLimit {
+            max_rows: app_config.csv_export_max_rows,
+        },
         legacy_email_map: app_config
             .legacy_email_map
             .into_iter()

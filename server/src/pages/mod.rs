@@ -5,7 +5,50 @@ pub mod models;
 pub mod monthly;
 pub mod users;
 
+use templates::CsvExportLimit;
+
 pub const PAGE_SIZE: usize = 50;
+
+/// Shared routing context passed into page renderers.
+pub struct PageContext<'a> {
+    pub base: &'a str,
+    pub period: &'a str,
+    pub csv_export: CsvExportLimit,
+}
+
+impl<'a> PageContext<'a> {
+    pub fn new(base: &'a str, period: &'a str, csv_export: CsvExportLimit) -> Self {
+        Self {
+            base,
+            period,
+            csv_export,
+        }
+    }
+}
+
+/// Table column sort state from query parameters.
+pub struct TableSort<'a> {
+    pub column: Option<usize>,
+    pub order: &'a str,
+}
+
+impl<'a> TableSort<'a> {
+    pub fn new(column: Option<usize>, order: &'a str) -> Self {
+        Self { column, order }
+    }
+}
+
+/// User/model subpage counts on a daily or monthly cost hub.
+pub struct SubpageCounts {
+    pub by_user: usize,
+    pub by_model: usize,
+}
+
+/// Total cost and currency for summary rows.
+pub struct CostTotal<'a> {
+    pub amount: f64,
+    pub currency: &'a str,
+}
 
 use common::{CostByModel, CostByUser, CostRecord};
 

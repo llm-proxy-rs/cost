@@ -72,7 +72,7 @@ pub async fn render_github_costs(
         currency,
         orgs.len(),
         repo_count,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -103,7 +103,7 @@ pub async fn render_github_orgs(
         &orgs,
         sort,
         &order,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -134,7 +134,7 @@ pub async fn render_github_repos(
         &costs,
         sort,
         &order,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -163,14 +163,11 @@ pub async fn render_github_org(
         .await?;
 
     Ok(Html(pages::github::render_org(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         page,
         &org,
         &repos,
-        sort,
-        &order,
-        state.export_row_cap,
+        pages::TableSort::new(sort, &order),
     ))
     .into_response())
 }
@@ -204,7 +201,7 @@ pub async fn render_github_repo_hub(
         &repo,
         total,
         currency,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -233,13 +230,11 @@ pub async fn render_github_repo_daily(
     let costs = pages::sort_records(costs, sort, &order);
 
     Ok(Html(pages::github::render_repo_daily(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         page,
         &org,
         &repo,
         &costs,
-        state.export_row_cap,
     ))
     .into_response())
 }
@@ -268,13 +263,11 @@ pub async fn render_github_repo_monthly(
     let costs = pages::sort_records(costs, sort, &order);
 
     Ok(Html(pages::github::render_repo_monthly(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         page,
         &org,
         &repo,
         &costs,
-        state.export_row_cap,
     ))
     .into_response())
 }
@@ -283,7 +276,7 @@ pub async fn render_github_repo_monthly(
 pub struct AppState {
     pub service: Arc<dyn CostService>,
     pub base_path: String,
-    pub export_row_cap: usize,
+    pub csv_export: templates::CsvExportLimit,
     pub legacy_email_map: Vec<(String, String)>,
     pub cognito_client_id: String,
     pub cognito_client_secret: String,
@@ -291,6 +284,12 @@ pub struct AppState {
     pub cognito_redirect_uri: String,
     pub cognito_region: String,
     pub cognito_user_pool_id: String,
+}
+
+impl AppState {
+    pub fn page_ctx<'a>(&'a self, period: &'a str) -> pages::PageContext<'a> {
+        pages::PageContext::new(&self.base_path, period, self.csv_export)
+    }
 }
 
 /// Whether the current session has selected the legacy view.

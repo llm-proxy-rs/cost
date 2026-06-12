@@ -11,7 +11,7 @@ pub fn render(
     monthly_count: usize,
     user_count: usize,
     model_count: usize,
-    export_row_cap: usize,
+    csv_export: templates::CsvExportLimit,
 ) -> String {
     Page {
         title: "Cost Explorer - Home".to_string(),
@@ -45,7 +45,7 @@ pub fn render(
             ),
         ],
     }
-    .render(export_row_cap)
+    .render(csv_export)
 }
 
 #[cfg(test)]
@@ -63,7 +63,7 @@ mod tests {
             6,
             5,
             3,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("<title>Cost Explorer - Home</title>"));
     }
@@ -79,7 +79,7 @@ mod tests {
             0,
             0,
             0,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
@@ -96,7 +96,7 @@ mod tests {
             0,
             0,
             0,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("99.99 USD"));
     }
@@ -112,7 +112,7 @@ mod tests {
             0,
             5,
             3,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("/costs/daily"));
         assert!(html.contains("/costs/monthly"));
@@ -137,7 +137,7 @@ mod tests {
             6,
             12,
             7,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("12"));
         assert!(html.contains("7"));
@@ -154,7 +154,7 @@ mod tests {
             0,
             1,
             1,
-            templates::DEFAULT_EXPORT_ROW_CAP,
+            templates::CsvExportLimit::DEFAULT,
         );
         assert!(html.contains("/_dashboard/costs/daily"));
         assert!(html.contains("/_dashboard/costs/monthly"));
