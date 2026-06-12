@@ -12,6 +12,7 @@ pub fn render_index(
     costs: &[CostByUser],
     sort: Option<usize>,
     order: &str,
+    export_row_cap: usize,
 ) -> String {
     let users = users.to_vec();
     let costs = costs.to_vec();
@@ -153,10 +154,10 @@ pub fn render_index(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
-pub fn render_hub(base: &str, period: &str, user: &UserInfo) -> String {
+pub fn render_hub(base: &str, period: &str, user: &UserInfo, export_row_cap: usize) -> String {
     Page {
         title: format!("Cost Explorer - {}", user.user_email),
         breadcrumbs: vec![
@@ -190,7 +191,7 @@ pub fn render_hub(base: &str, period: &str, user: &UserInfo) -> String {
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_daily_costs(
@@ -200,6 +201,7 @@ pub fn render_daily_costs(
     user_id: &str,
     user_email: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -271,7 +273,7 @@ pub fn render_daily_costs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_monthly_costs(
@@ -281,6 +283,7 @@ pub fn render_monthly_costs(
     user_id: &str,
     user_email: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -353,7 +356,7 @@ pub fn render_monthly_costs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 #[cfg(test)]
@@ -362,7 +365,16 @@ mod tests {
 
     #[test]
     fn render_index_empty() {
-        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &[],
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No users found."));
         assert!(html.contains("Cost Explorer - Users"));
     }
@@ -383,7 +395,16 @@ mod tests {
             amount: 50.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index("/", "30d", 1, &users, &costs, None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &users,
+            &costs,
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("50.00 USD"));
         assert!(html.contains("2/3")); // active/total api keys
@@ -392,7 +413,16 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &[],
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -407,7 +437,16 @@ mod tests {
             active_api_key_count: 1,
             inference_profile_count: 0,
         }];
-        let html = render_index("/_dashboard", "30d", 1, &users, &[], None, "asc");
+        let html = render_index(
+            "/_dashboard",
+            "30d",
+            1,
+            &users,
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/users/abc-123"));
     }
 
@@ -421,7 +460,7 @@ mod tests {
             active_api_key_count: 2,
             inference_profile_count: 5,
         };
-        let html = render_hub("/", "30d", &user);
+        let html = render_hub("/", "30d", &user, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("abc-123"));
         assert!(html.contains("2024-01-01"));
@@ -431,7 +470,15 @@ mod tests {
 
     #[test]
     fn render_daily_costs_empty() {
-        let html = render_daily_costs("/", "30d", 1, "abc-123", "alice@example.com", &[]);
+        let html = render_daily_costs(
+            "/",
+            "30d",
+            1,
+            "abc-123",
+            "alice@example.com",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this user"));
     }
 
@@ -442,7 +489,15 @@ mod tests {
             amount: 42.0,
             currency: "USD".to_string(),
         }];
-        let html = render_daily_costs("/", "30d", 1, "abc-123", "alice@example.com", &costs);
+        let html = render_daily_costs(
+            "/",
+            "30d",
+            1,
+            "abc-123",
+            "alice@example.com",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("42.00 USD"));
         assert!(html.contains("/costs/daily/2024-01-15/users/abc-123"));
@@ -450,7 +505,15 @@ mod tests {
 
     #[test]
     fn render_monthly_costs_empty() {
-        let html = render_monthly_costs("/", "30d", 1, "abc-123", "alice@example.com", &[]);
+        let html = render_monthly_costs(
+            "/",
+            "30d",
+            1,
+            "abc-123",
+            "alice@example.com",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this user"));
     }
 
@@ -461,7 +524,15 @@ mod tests {
             amount: 500.0,
             currency: "USD".to_string(),
         }];
-        let html = render_monthly_costs("/", "30d", 1, "abc-123", "alice@example.com", &costs);
+        let html = render_monthly_costs(
+            "/",
+            "30d",
+            1,
+            "abc-123",
+            "alice@example.com",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("2024-01"));
         assert!(html.contains("500.00 USD"));
         assert!(html.contains("/costs/monthly/2024-01/users/abc-123"));

@@ -11,6 +11,7 @@ pub fn render(
     monthly_count: usize,
     user_count: usize,
     model_count: usize,
+    export_row_cap: usize,
 ) -> String {
     Page {
         title: "Cost Explorer - Home".to_string(),
@@ -44,7 +45,7 @@ pub fn render(
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 #[cfg(test)]
@@ -53,26 +54,66 @@ mod tests {
 
     #[test]
     fn render_contains_title() {
-        let html = render("/", "30d", 123.45, "USD", 1, 6, 5, 3);
+        let html = render(
+            "/",
+            "30d",
+            123.45,
+            "USD",
+            1,
+            6,
+            5,
+            3,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<title>Cost Explorer - Home</title>"));
     }
 
     #[test]
     fn render_contains_period_links() {
-        let html = render("/", "30d", 0.0, "USD", 0, 0, 0, 0);
+        let html = render(
+            "/",
+            "30d",
+            0.0,
+            "USD",
+            0,
+            0,
+            0,
+            0,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
 
     #[test]
     fn render_contains_total_cost() {
-        let html = render("/", "30d", 99.99, "USD", 0, 0, 0, 0);
+        let html = render(
+            "/",
+            "30d",
+            99.99,
+            "USD",
+            0,
+            0,
+            0,
+            0,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("99.99 USD"));
     }
 
     #[test]
     fn render_contains_subpage_links() {
-        let html = render("/", "30d", 0.0, "USD", 0, 0, 5, 3);
+        let html = render(
+            "/",
+            "30d",
+            0.0,
+            "USD",
+            0,
+            0,
+            5,
+            3,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/costs/daily"));
         assert!(html.contains("/costs/monthly"));
         assert!(html.contains("/users"));
@@ -87,14 +128,34 @@ mod tests {
 
     #[test]
     fn render_contains_counts() {
-        let html = render("/", "30d", 0.0, "USD", 2, 6, 12, 7);
+        let html = render(
+            "/",
+            "30d",
+            0.0,
+            "USD",
+            2,
+            6,
+            12,
+            7,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("12"));
         assert!(html.contains("7"));
     }
 
     #[test]
     fn render_uses_custom_base_path() {
-        let html = render("/_dashboard", "30d", 0.0, "USD", 0, 0, 1, 1);
+        let html = render(
+            "/_dashboard",
+            "30d",
+            0.0,
+            "USD",
+            0,
+            0,
+            1,
+            1,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/costs/daily"));
         assert!(html.contains("/_dashboard/costs/monthly"));
         assert!(html.contains("/_dashboard/users"));

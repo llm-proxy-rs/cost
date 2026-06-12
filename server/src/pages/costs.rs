@@ -4,7 +4,13 @@ use leptos::either::Either;
 use leptos::prelude::*;
 use templates::{pagination_nav, period_links, Breadcrumb, InfoRow, NavLink, Page, Subpage};
 
-pub fn render(base: &str, period: &str, page: usize, daily_cost: &[CostRecord]) -> String {
+pub fn render(
+    base: &str,
+    period: &str,
+    page: usize,
+    daily_cost: &[CostRecord],
+    export_row_cap: usize,
+) -> String {
     let daily_cost = daily_cost.to_vec();
     let total: f64 = daily_cost.iter().map(|r| r.amount).sum();
     let currency = daily_cost
@@ -69,7 +75,7 @@ pub fn render(base: &str, period: &str, page: usize, daily_cost: &[CostRecord]) 
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_hub(
@@ -80,6 +86,7 @@ pub fn render_hub(
     currency: &str,
     user_count: usize,
     model_count: usize,
+    export_row_cap: usize,
 ) -> String {
     Page {
         title: format!("Cost Explorer - {}", date),
@@ -110,7 +117,7 @@ pub fn render_hub(
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_users(
@@ -119,6 +126,7 @@ pub fn render_users(
     page: usize,
     date: &str,
     costs: &[CostByUser],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -183,7 +191,7 @@ pub fn render_users(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_models(
@@ -192,6 +200,7 @@ pub fn render_models(
     page: usize,
     date: &str,
     costs: &[CostByModel],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -256,7 +265,7 @@ pub fn render_models(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_user_models(
@@ -266,6 +275,7 @@ pub fn render_user_models(
     date: &str,
     user_email: &str,
     costs: &[CostByModel],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -332,7 +342,7 @@ pub fn render_user_models(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_model_users(
@@ -342,6 +352,7 @@ pub fn render_model_users(
     date: &str,
     model_name: &str,
     costs: &[CostByUser],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -411,7 +422,7 @@ pub fn render_model_users(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 #[cfg(test)]
@@ -425,20 +436,20 @@ mod tests {
             amount: 123.45,
             currency: "USD".to_string(),
         }];
-        let html = render("/", "30d", 1, &daily);
+        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<title>Cost Explorer - Daily Cost</title>"));
     }
 
     #[test]
     fn render_contains_breadcrumbs() {
-        let html = render("/", "30d", 1, &[]);
+        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
     }
 
     #[test]
     fn render_contains_period_links() {
-        let html = render("/", "30d", 1, &[]);
+        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -450,7 +461,7 @@ mod tests {
             amount: 99.99,
             currency: "USD".to_string(),
         }];
-        let html = render("/", "30d", 1, &daily);
+        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("99.99 USD"));
     }
 
@@ -468,7 +479,7 @@ mod tests {
                 currency: "USD".to_string(),
             },
         ];
-        let html = render("/", "30d", 1, &daily);
+        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("2024-01-16"));
         assert!(html.contains("50.00 USD"));
@@ -477,13 +488,19 @@ mod tests {
 
     #[test]
     fn render_empty_daily_cost() {
-        let html = render("/", "30d", 1, &[]);
+        let html = render("/", "30d", 1, &[], templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("No cost data found for this period."));
     }
 
     #[test]
     fn render_uses_custom_base_path() {
-        let html = render("/_dashboard", "30d", 1, &[]);
+        let html = render(
+            "/_dashboard",
+            "30d",
+            1,
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/costs/daily"));
     }
 
@@ -501,7 +518,7 @@ mod tests {
                 currency: "USD".to_string(),
             },
         ];
-        let html = render("/", "30d", 1, &daily);
+        let html = render("/", "30d", 1, &daily, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("/costs/daily/2024-01-15"));
         assert!(html.contains("/costs/daily/2024-01-16"));
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15\">"));
@@ -515,19 +532,43 @@ mod tests {
             amount: 50.0,
             currency: "USD".to_string(),
         }];
-        let html = render("/_dashboard", "30d", 1, &daily);
+        let html = render(
+            "/_dashboard",
+            "30d",
+            1,
+            &daily,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15"));
     }
 
     #[test]
     fn render_hub_contains_title() {
-        let html = render_hub("/", "30d", "2024-01-15", 123.45, "USD", 3, 2);
+        let html = render_hub(
+            "/",
+            "30d",
+            "2024-01-15",
+            123.45,
+            "USD",
+            3,
+            2,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<title>Cost Explorer - 2024-01-15</title>"));
     }
 
     #[test]
     fn render_hub_contains_breadcrumbs() {
-        let html = render_hub("/", "30d", "2024-01-15", 123.45, "USD", 3, 2);
+        let html = render_hub(
+            "/",
+            "30d",
+            "2024-01-15",
+            123.45,
+            "USD",
+            3,
+            2,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
@@ -535,14 +576,32 @@ mod tests {
 
     #[test]
     fn render_hub_contains_info_rows() {
-        let html = render_hub("/", "30d", "2024-01-15", 123.45, "USD", 3, 2);
+        let html = render_hub(
+            "/",
+            "30d",
+            "2024-01-15",
+            123.45,
+            "USD",
+            3,
+            2,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("123.45 USD"));
     }
 
     #[test]
     fn render_hub_contains_subpage_links() {
-        let html = render_hub("/", "30d", "2024-01-15", 123.45, "USD", 3, 2);
+        let html = render_hub(
+            "/",
+            "30d",
+            "2024-01-15",
+            123.45,
+            "USD",
+            3,
+            2,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("By User"));
         assert!(html.contains("By Model"));
         assert!(html.contains("/costs/daily/2024-01-15/users"));
@@ -551,14 +610,30 @@ mod tests {
 
     #[test]
     fn render_hub_custom_base() {
-        let html = render_hub("/_dashboard", "30d", "2024-01-15", 50.0, "USD", 1, 1);
+        let html = render_hub(
+            "/_dashboard",
+            "30d",
+            "2024-01-15",
+            50.0,
+            "USD",
+            1,
+            1,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15/users"));
         assert!(html.contains("/_dashboard/costs/daily/2024-01-15/models"));
     }
 
     #[test]
     fn render_users_empty() {
-        let html = render_users("/", "30d", 1, "2024-01-15", &[]);
+        let html = render_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this date."));
     }
 
@@ -570,7 +645,14 @@ mod tests {
             amount: 42.0,
             currency: "USD".to_string(),
         }];
-        let html = render_users("/", "30d", 1, "2024-01-15", &costs);
+        let html = render_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("42.00 USD"));
         assert!(html.contains("/costs/daily/2024-01-15/users/user-1"));
@@ -578,7 +660,14 @@ mod tests {
 
     #[test]
     fn render_users_breadcrumbs() {
-        let html = render_users("/", "30d", 1, "2024-01-15", &[]);
+        let html = render_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
@@ -593,13 +682,27 @@ mod tests {
             amount: 10.0,
             currency: "USD".to_string(),
         }];
-        let html = render_users("/", "30d", 1, "2024-01-15", &costs);
+        let html = render_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15/users/user-1\">"));
     }
 
     #[test]
     fn render_models_empty() {
-        let html = render_models("/", "30d", 1, "2024-01-15", &[]);
+        let html = render_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this date."));
     }
 
@@ -611,7 +714,14 @@ mod tests {
             amount: 55.0,
             currency: "USD".to_string(),
         }];
-        let html = render_models("/", "30d", 1, "2024-01-15", &costs);
+        let html = render_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("claude-3"));
         assert!(html.contains("55.00 USD"));
         assert!(html.contains("/costs/daily/2024-01-15/models/model-1"));
@@ -619,7 +729,14 @@ mod tests {
 
     #[test]
     fn render_models_breadcrumbs() {
-        let html = render_models("/", "30d", 1, "2024-01-15", &[]);
+        let html = render_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
@@ -634,13 +751,28 @@ mod tests {
             amount: 10.0,
             currency: "USD".to_string(),
         }];
-        let html = render_models("/", "30d", 1, "2024-01-15", &costs);
+        let html = render_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<a href=\"/costs/daily/2024-01-15/models/model-1\">"));
     }
 
     #[test]
     fn render_user_models_empty() {
-        let html = render_user_models("/", "30d", 1, "2024-01-15", "alice@example.com", &[]);
+        let html = render_user_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "alice@example.com",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found."));
     }
 
@@ -652,7 +784,15 @@ mod tests {
             amount: 30.0,
             currency: "USD".to_string(),
         }];
-        let html = render_user_models("/", "30d", 1, "2024-01-15", "alice@example.com", &costs);
+        let html = render_user_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "alice@example.com",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("claude-3"));
         assert!(html.contains("30.00 USD"));
         // Leaf page: model names are plain text, not links
@@ -661,7 +801,15 @@ mod tests {
 
     #[test]
     fn render_user_models_breadcrumbs() {
-        let html = render_user_models("/", "30d", 1, "2024-01-15", "alice@example.com", &[]);
+        let html = render_user_models(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "alice@example.com",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));
@@ -671,7 +819,15 @@ mod tests {
 
     #[test]
     fn render_model_users_empty() {
-        let html = render_model_users("/", "30d", 1, "2024-01-15", "claude-3", &[]);
+        let html = render_model_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "claude-3",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found."));
     }
 
@@ -683,7 +839,15 @@ mod tests {
             amount: 25.0,
             currency: "USD".to_string(),
         }];
-        let html = render_model_users("/", "30d", 1, "2024-01-15", "claude-3", &costs);
+        let html = render_model_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "claude-3",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("alice@example.com"));
         assert!(html.contains("25.00 USD"));
         // Leaf page: user emails are plain text, not links
@@ -692,7 +856,15 @@ mod tests {
 
     #[test]
     fn render_model_users_breadcrumbs() {
-        let html = render_model_users("/", "30d", 1, "2024-01-15", "claude-3", &[]);
+        let html = render_model_users(
+            "/",
+            "30d",
+            1,
+            "2024-01-15",
+            "claude-3",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("Cost Explorer"));
         assert!(html.contains("Daily Cost"));
         assert!(html.contains("2024-01-15"));

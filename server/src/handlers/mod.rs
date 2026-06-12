@@ -72,6 +72,7 @@ pub async fn render_github_costs(
         currency,
         orgs.len(),
         repo_count,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -102,6 +103,7 @@ pub async fn render_github_orgs(
         &orgs,
         sort,
         &order,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -132,6 +134,7 @@ pub async fn render_github_repos(
         &costs,
         sort,
         &order,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -167,6 +170,7 @@ pub async fn render_github_org(
         &repos,
         sort,
         &order,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -200,6 +204,7 @@ pub async fn render_github_repo_hub(
         &repo,
         total,
         currency,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -234,6 +239,7 @@ pub async fn render_github_repo_daily(
         &org,
         &repo,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -268,6 +274,7 @@ pub async fn render_github_repo_monthly(
         &org,
         &repo,
         &costs,
+        state.export_row_cap,
     ))
     .into_response())
 }
@@ -276,6 +283,7 @@ pub async fn render_github_repo_monthly(
 pub struct AppState {
     pub service: Arc<dyn CostService>,
     pub base_path: String,
+    pub export_row_cap: usize,
     pub legacy_email_map: Vec<(String, String)>,
     pub cognito_client_id: String,
     pub cognito_client_secret: String,

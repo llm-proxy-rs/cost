@@ -12,6 +12,7 @@ pub fn render_index(
     costs: &[CostByModel],
     sort: Option<usize>,
     order: &str,
+    export_row_cap: usize,
 ) -> String {
     let models = models.to_vec();
     let costs = costs.to_vec();
@@ -163,10 +164,10 @@ pub fn render_index(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
-pub fn render_hub(base: &str, period: &str, model: &ModelInfo) -> String {
+pub fn render_hub(base: &str, period: &str, model: &ModelInfo, export_row_cap: usize) -> String {
     let status = if model.is_disabled {
         "Disabled"
     } else {
@@ -209,7 +210,7 @@ pub fn render_hub(base: &str, period: &str, model: &ModelInfo) -> String {
             ),
         ],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_daily_costs(
@@ -219,6 +220,7 @@ pub fn render_daily_costs(
     model_id: &str,
     model_name: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -291,7 +293,7 @@ pub fn render_daily_costs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 pub fn render_monthly_costs(
@@ -301,6 +303,7 @@ pub fn render_monthly_costs(
     model_id: &str,
     model_name: &str,
     costs: &[CostRecord],
+    export_row_cap: usize,
 ) -> String {
     let costs = costs.to_vec();
     let empty = costs.is_empty();
@@ -374,7 +377,7 @@ pub fn render_monthly_costs(
         content,
         subpages: vec![],
     }
-    .render()
+    .render(export_row_cap)
 }
 
 #[cfg(test)]
@@ -383,7 +386,16 @@ mod tests {
 
     #[test]
     fn render_index_empty() {
-        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &[],
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No models found."));
         assert!(html.contains("Cost Explorer - Models"));
     }
@@ -403,7 +415,16 @@ mod tests {
             amount: 100.0,
             currency: "USD".to_string(),
         }];
-        let html = render_index("/", "30d", 1, &models, &costs, None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &models,
+            &costs,
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("claude-3"));
         assert!(html.contains("100.00 USD"));
         assert!(html.contains("Active"));
@@ -413,7 +434,16 @@ mod tests {
 
     #[test]
     fn render_index_period_links() {
-        let html = render_index("/", "30d", 1, &[], &[], None, "asc");
+        let html = render_index(
+            "/",
+            "30d",
+            1,
+            &[],
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("<b>Past 30 Days</b>"));
         assert!(html.contains("?period=7d"));
     }
@@ -427,7 +457,16 @@ mod tests {
             protected: false,
             user_count: 1,
         }];
-        let html = render_index("/_dashboard", "30d", 1, &models, &[], None, "asc");
+        let html = render_index(
+            "/_dashboard",
+            "30d",
+            1,
+            &models,
+            &[],
+            None,
+            "asc",
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("/_dashboard/models/model-1"));
     }
 
@@ -440,7 +479,7 @@ mod tests {
             protected: true,
             user_count: 5,
         };
-        let html = render_hub("/", "30d", &model);
+        let html = render_hub("/", "30d", &model, templates::DEFAULT_EXPORT_ROW_CAP);
         assert!(html.contains("claude-3"));
         assert!(html.contains("model-1"));
         assert!(html.contains("Active"));
@@ -451,7 +490,15 @@ mod tests {
 
     #[test]
     fn render_daily_costs_empty() {
-        let html = render_daily_costs("/", "30d", 1, "model-1", "claude-3", &[]);
+        let html = render_daily_costs(
+            "/",
+            "30d",
+            1,
+            "model-1",
+            "claude-3",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this model"));
     }
 
@@ -462,7 +509,15 @@ mod tests {
             amount: 75.0,
             currency: "USD".to_string(),
         }];
-        let html = render_daily_costs("/", "30d", 1, "model-1", "claude-3", &costs);
+        let html = render_daily_costs(
+            "/",
+            "30d",
+            1,
+            "model-1",
+            "claude-3",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("2024-01-15"));
         assert!(html.contains("75.00 USD"));
         assert!(html.contains("/costs/daily/2024-01-15/models/model-1"));
@@ -470,7 +525,15 @@ mod tests {
 
     #[test]
     fn render_monthly_costs_empty() {
-        let html = render_monthly_costs("/", "30d", 1, "model-1", "claude-3", &[]);
+        let html = render_monthly_costs(
+            "/",
+            "30d",
+            1,
+            "model-1",
+            "claude-3",
+            &[],
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("No cost data found for this model"));
     }
 
@@ -481,7 +544,15 @@ mod tests {
             amount: 500.0,
             currency: "USD".to_string(),
         }];
-        let html = render_monthly_costs("/", "30d", 1, "model-1", "claude-3", &costs);
+        let html = render_monthly_costs(
+            "/",
+            "30d",
+            1,
+            "model-1",
+            "claude-3",
+            &costs,
+            templates::DEFAULT_EXPORT_ROW_CAP,
+        );
         assert!(html.contains("2024-01"));
         assert!(html.contains("500.00 USD"));
         assert!(html.contains("/costs/monthly/2024-01/models/model-1"));
