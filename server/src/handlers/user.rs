@@ -80,7 +80,7 @@ pub async fn render_home(
         monthly_cost.len(),
         1,
         model_count,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -115,7 +115,7 @@ pub async fn render_daily_costs(
         &period,
         page,
         &daily_cost,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -150,14 +150,11 @@ pub async fn render_users(
         .collect::<Vec<_>>();
 
     Ok(Html(pages::users::render_index(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         page,
         &users_enriched,
         &costs,
-        sort,
-        &order,
-        state.export_row_cap,
+        pages::TableSort::new(sort, &order),
     ))
     .into_response())
 }
@@ -188,14 +185,11 @@ pub async fn render_models(
     let models_enriched = svc.list_models_enriched_by_user_id(&uid).await?;
 
     Ok(Html(pages::models::render_index(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         page,
         &models_enriched,
         &costs,
-        sort,
-        &order,
-        state.export_row_cap,
+        pages::TableSort::new(sort, &order),
     ))
     .into_response())
 }
@@ -230,7 +224,7 @@ pub async fn render_user_hub(
         &state.base_path,
         &period,
         &user_info,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -274,7 +268,7 @@ pub async fn render_user_daily_costs(
         &user_id,
         &user_email,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -320,7 +314,7 @@ pub async fn render_user_monthly_costs(
         &user_id,
         &user_email,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -360,7 +354,7 @@ pub async fn render_model_hub(
         &state.base_path,
         &period,
         &model_info,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -403,7 +397,7 @@ pub async fn render_model_daily_costs(
         &model_id,
         &model_name,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -446,7 +440,7 @@ pub async fn render_model_monthly_costs(
         &model_id,
         &model_name,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -491,14 +485,16 @@ pub async fn render_date_hub(
         .await?;
 
     Ok(Html(pages::costs::render_hub(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         &date,
-        total_cost,
-        currency,
-        users.len(),
-        models.len(),
-        state.export_row_cap,
+        pages::CostTotal {
+            amount: total_cost,
+            currency,
+        },
+        pages::SubpageCounts {
+            by_user: users.len(),
+            by_model: models.len(),
+        },
     ))
     .into_response())
 }
@@ -539,7 +535,7 @@ pub async fn render_date_users(
         page,
         &date,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -582,7 +578,7 @@ pub async fn render_date_models(
         page,
         &date,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -632,7 +628,7 @@ pub async fn render_date_models_for_user(
         &date,
         &user_email,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -679,7 +675,7 @@ pub async fn render_date_users_for_model(
         &date,
         &model_name,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -718,7 +714,7 @@ pub async fn render_monthly_costs(
         &period,
         page,
         &monthly_cost,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -756,14 +752,16 @@ pub async fn render_month_hub(
     let models = svc.get_cost_by_models_for_user_id(start, end, &uid).await?;
 
     Ok(Html(pages::monthly::render_hub(
-        &state.base_path,
-        &period,
+        &state.page_ctx(&period),
         &month,
-        total_cost,
-        currency,
-        users.len(),
-        models.len(),
-        state.export_row_cap,
+        pages::CostTotal {
+            amount: total_cost,
+            currency,
+        },
+        pages::SubpageCounts {
+            by_user: users.len(),
+            by_model: models.len(),
+        },
     ))
     .into_response())
 }
@@ -803,7 +801,7 @@ pub async fn render_month_users(
         page,
         &month,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -843,7 +841,7 @@ pub async fn render_month_models(
         page,
         &month,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -892,7 +890,7 @@ pub async fn render_month_models_for_user(
         &month,
         &user_email,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }
@@ -938,7 +936,7 @@ pub async fn render_month_users_for_model(
         &month,
         &model_name,
         &costs,
-        state.export_row_cap,
+        state.csv_export,
     ))
     .into_response())
 }

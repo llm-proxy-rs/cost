@@ -1,8 +1,21 @@
 use leptos::either::Either;
 use leptos::prelude::*;
 
-/// Default cap on how many rows a CSV export gathers across pages.
-pub const DEFAULT_EXPORT_ROW_CAP: usize = 1000;
+/// Max rows a paginated table CSV export gathers across pages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CsvExportLimit {
+    pub max_rows: usize,
+}
+
+impl CsvExportLimit {
+    pub const DEFAULT: Self = Self { max_rows: 1000 };
+}
+
+impl From<usize> for CsvExportLimit {
+    fn from(max_rows: usize) -> Self {
+        Self { max_rows }
+    }
+}
 
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -141,7 +154,7 @@ pub fn collapsible_block(content: &str, css_class: &str) -> String {
     )
 }
 
-pub fn page_layout(title: &str, body_html: String, export_row_cap: usize) -> String {
+pub fn page_layout(title: &str, body_html: String, csv_export: CsvExportLimit) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -281,7 +294,7 @@ details.collapsible[open] > summary .show-less {{ display: inline; }}
 </html>"#,
         title = html_escape(title),
         body_html = body_html,
-        max_rows = export_row_cap
+        max_rows = csv_export.max_rows
     )
 }
 
@@ -387,7 +400,7 @@ impl Default for Page {
 }
 
 impl<C: IntoView> Page<C> {
-    pub fn render(self, export_row_cap: usize) -> String {
+    pub fn render(self, csv_export: CsvExportLimit) -> String {
         let Page {
             title,
             breadcrumbs,
@@ -461,7 +474,7 @@ impl<C: IntoView> Page<C> {
             }}
         };
 
-        page_layout(&title, body.to_html(), export_row_cap)
+        page_layout(&title, body.to_html(), csv_export)
     }
 }
 
@@ -512,7 +525,7 @@ line2</pre>"#
         let result = page_layout(
             "Test Title",
             "<p>body</p>".to_string(),
-            DEFAULT_EXPORT_ROW_CAP,
+            CsvExportLimit::DEFAULT,
         );
         assert!(result.contains("<title>Test Title</title>"));
         assert!(result.contains("<p>body</p>"));
@@ -521,14 +534,14 @@ line2</pre>"#
 
     #[test]
     fn page_layout_escapes_title() {
-        let result = page_layout("<script>", "".to_string(), DEFAULT_EXPORT_ROW_CAP);
+        let result = page_layout("<script>", "".to_string(), CsvExportLimit::DEFAULT);
         assert!(result.contains("<title>&lt;script&gt;</title>"));
     }
 
     #[test]
-    fn page_layout_embeds_export_row_cap() {
-        // The CSV export JS must carry the configured cap.
-        let result = page_layout("T", String::new(), 250);
+    fn page_layout_embeds_csv_export_limit() {
+        // The CSV export JS must carry the configured max row count.
+        let result = page_layout("T", String::new(), CsvExportLimit { max_rows: 250 });
         assert!(result.contains("MAX_ROWS=250"));
         assert!(result.contains("async function exportAll"));
         assert!(result.contains("getAttribute('data-export-name')"));
@@ -569,7 +582,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<h1>"));
         assert!(html.contains(r#"<a href="/">"#));
         assert!(html.contains("Home"));
@@ -588,7 +601,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<h2>Navigation</h2>"));
         assert!(html.contains(r#"<a href="/edit">"#));
         assert!(html.contains("Edit"));
@@ -606,7 +619,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<h2>Info</h2>"));
         assert!(html.contains("Key"));
         assert!(html.contains("&lt;value&gt;"));
@@ -623,7 +636,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<b>bold</b>"));
     }
 
@@ -637,7 +650,7 @@ line2</pre>"#
             content: view! { <form><input type="text" name="x"/></form> },
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<form>"));
         assert!(html.contains(r#"name="x""#));
     }
@@ -652,7 +665,7 @@ line2</pre>"#
             content: (),
             subpages: vec![Subpage::new("Requests", "/requests", 42)],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<h2>Subpages</h2>"));
         assert!(html.contains("Page"));
         assert!(html.contains("Count"));
@@ -671,7 +684,7 @@ line2</pre>"#
             content: (),
             subpages: vec![],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(!html.contains("<h1>"));
         assert!(!html.contains("Navigation"));
         assert!(!html.contains("Info"));
@@ -688,7 +701,7 @@ line2</pre>"#
             content: view! { <p>"content"</p> },
             subpages: vec![Subpage::new("Sub", "/sub", 5)],
         }
-        .render(DEFAULT_EXPORT_ROW_CAP);
+        .render(CsvExportLimit::DEFAULT);
         assert!(html.contains("<title>Full Page</title>"));
         assert!(html.contains("<h1>"));
         assert!(html.contains("Navigation"));
