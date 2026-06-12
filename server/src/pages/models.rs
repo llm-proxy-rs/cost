@@ -20,7 +20,7 @@ pub fn render_index(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let base_owned = base.to_string();
 
     // Build a cost lookup by model_id
@@ -44,6 +44,7 @@ pub fn render_index(
             Row {
                 model_id: m.model_id.clone(),
                 display: m.model_name.clone(),
+                // No cost row for this model in the period: 0, inheriting the page currency.
                 cost: cost_entry.map(|c| c.amount).unwrap_or(0.0),
                 currency: cost_entry
                     .map(|c| c.currency.clone())
@@ -66,6 +67,7 @@ pub fn render_index(
         if !model_ids.contains(&c.model_id) {
             rows.push(Row {
                 model_id: c.model_id.clone(),
+                // Cost row for a model not in the enriched list: show name, or id if absent.
                 display: c.model_name.clone().unwrap_or_else(|| c.model_id.clone()),
                 cost: c.amount,
                 currency: c.currency.clone(),
@@ -83,13 +85,21 @@ pub fn render_index(
         rows.sort_by(|a, b| {
             let cmp = match col {
                 0 => a.display.cmp(&b.display),
-                1 => a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal),
+                // f64 has no total order; treat incomparable (NaN) costs as equal.
+                1 => a
+                    .cost
+                    .partial_cmp(&b.cost)
+                    .unwrap_or(std::cmp::Ordering::Equal),
                 2 => a.status.cmp(&b.status),
                 3 => a.protected.cmp(&b.protected),
                 4 => a.user_count.cmp(&b.user_count),
                 _ => std::cmp::Ordering::Equal,
             };
-            if desc { cmp.reverse() } else { cmp }
+            if desc {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         });
     }
     let total_pages = if total_rows == 0 {
@@ -216,7 +226,7 @@ pub fn render_daily_costs(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let base_owned = base.to_string();
 
     let (page_items, page) = paginate(&costs, page);
@@ -298,7 +308,7 @@ pub fn render_monthly_costs(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let base_owned = base.to_string();
 
     let (page_items, page) = paginate(&costs, page);

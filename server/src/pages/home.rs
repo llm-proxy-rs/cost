@@ -81,6 +81,8 @@ mod tests {
         assert!(html.contains("Monthly Cost"));
         assert!(html.contains("Users"));
         assert!(html.contains("Models"));
+        // GitHub is its own top-bar mode now, not a Normal-mode subpage.
+        assert!(!html.contains(">GitHub</a>"));
     }
 
     #[test]

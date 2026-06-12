@@ -5,6 +5,17 @@ database_url_gateway_ro = "postgres://postgres:postgres@localhost/gateway"
 # Incremental lookback (default: 3 days)
 # incremental_days = 3
 
+# Cost-allocation tag keys for the GitHub org/repo dimensions, exactly as activated in the
+# Billing console. (defaults: "iamPrincipal/GithubOrgName" / "iamPrincipal/GithubRepoName")
+# github_org_tag_key = "iamPrincipal/GithubOrgName"
+# github_repo_tag_key = "iamPrincipal/GithubRepoName"
+
+# If the GitHub-tagged cost lives in a DIFFERENT AWS account, set the ARN of a role in
+# that account to assume for the GitHub Cost Explorer query (needs ce:GetCostAndUsage,
+# and this batch's own principal must be allowed to sts:AssumeRole it). Cost Explorer is
+# queried in us-east-1. Leave unset to use the batch's default credentials/account.
+# github_ce_role_arn = "arn:aws:iam::222222222222:role/cost-explorer-readonly"
+
 # Custom date range (overrides incremental_days)
 # start = "2025-01-01"
 # end = "2025-06-01"

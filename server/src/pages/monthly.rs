@@ -10,8 +10,9 @@ pub fn render(base: &str, period: &str, page: usize, monthly_cost: &[CostRecord]
     let currency = monthly_cost
         .first()
         .map(|r| r.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let empty = monthly_cost.is_empty();
+    // Date range used only for CSV export filename hints; empty when there are no rows.
     let start = monthly_cost.first().map(|r| r.date.as_str()).unwrap_or("");
     let end = monthly_cost.last().map(|r| r.date.as_str()).unwrap_or("");
     let start_owned = start.to_string();
@@ -35,6 +36,7 @@ pub fn render(base: &str, period: &str, page: usize, monthly_cost: &[CostRecord]
                         <th>"Cost"</th>
                     </tr>
                     {page_items.iter().map(|r| {
+                        // Strip the day to show "YYYY-MM"; full date kept if not in -01 form.
                         let month = r.date.strip_suffix("-01").unwrap_or(&r.date).to_string();
                         let month_href = make_path(&base_owned, &format!("/costs/monthly/{}", month));
                         let cost_str = format!("{:.2} {}", r.amount, r.currency);
@@ -126,7 +128,7 @@ pub fn render_users(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let base_owned = base.to_string();
     let month_owned = month.to_string();
     let (page_items, page) = paginate(&costs, page);
@@ -148,7 +150,7 @@ pub fn render_users(
                     </tr>
                     {page_items.iter().map(|c| {
                         let display = c.user_email.clone()
-                            .unwrap_or_else(|| c.user_id.clone());
+                            .unwrap_or_else(|| c.user_id.clone()); // no email on record: show the user id
                         let href = make_path(&base_owned, &format!("/costs/monthly/{}/users/{}", month_owned, c.user_id));
                         let cost_str = format!("{:.2} {}", c.amount, c.currency);
                         view! {
@@ -199,7 +201,7 @@ pub fn render_models(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let base_owned = base.to_string();
     let month_owned = month.to_string();
     let (page_items, page) = paginate(&costs, page);
@@ -221,7 +223,7 @@ pub fn render_models(
                     </tr>
                     {page_items.iter().map(|c| {
                         let display = c.model_name.clone()
-                            .unwrap_or_else(|| c.model_id.clone());
+                            .unwrap_or_else(|| c.model_id.clone()); // no name on record: show the model id
                         let href = make_path(&base_owned, &format!("/costs/monthly/{}/models/{}", month_owned, c.model_id));
                         let cost_str = format!("{:.2} {}", c.amount, c.currency);
                         view! {
@@ -273,7 +275,7 @@ pub fn render_user_models(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let (page_items, page) = paginate(&costs, page);
     let self_path = make_path(
         base,
@@ -296,7 +298,7 @@ pub fn render_user_models(
                     </tr>
                     {page_items.iter().map(|c| {
                         let display = c.model_name.clone()
-                            .unwrap_or_else(|| c.model_id.clone());
+                            .unwrap_or_else(|| c.model_id.clone()); // no name on record: show the model id
                         let cost_str = format!("{:.2} {}", c.amount, c.currency);
                         view! {
                             <tr>
@@ -352,7 +354,7 @@ pub fn render_model_users(
     let currency = costs
         .first()
         .map(|c| c.currency.clone())
-        .unwrap_or_else(|| "USD".to_string());
+        .unwrap_or_else(|| "USD".to_string()); // empty result set: no row to read a currency from
     let (page_items, page) = paginate(&costs, page);
     let self_path = make_path(
         base,
@@ -375,7 +377,7 @@ pub fn render_model_users(
                     </tr>
                     {page_items.iter().map(|c| {
                         let display = c.user_email.clone()
-                            .unwrap_or_else(|| c.user_id.clone());
+                            .unwrap_or_else(|| c.user_id.clone()); // no email on record: show the user id
                         let cost_str = format!("{:.2} {}", c.amount, c.currency);
                         view! {
                             <tr>

@@ -10,6 +10,30 @@ pub struct CostRow {
     pub currency: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct GithubCostRow {
+    pub date: NaiveDate,
+    pub org_name: String,
+    pub repo_name: String,
+    pub amount: f64,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CostByGithub {
+    pub org_name: String,
+    pub repo_name: String,
+    pub amount: f64,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GithubOrgCost {
+    pub org_name: String,
+    pub amount: f64,
+    pub currency: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CostByUser {
     pub user_id: String,

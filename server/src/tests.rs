@@ -3,7 +3,9 @@ use axum::body::Body;
 use axum::response::IntoResponse;
 use axum::routing::get as axum_get;
 use chrono::NaiveDate;
-use common::{CostByModel, CostByUser, CostRecord, ModelInfo, UserInfo};
+use common::{
+    CostByGithub, CostByModel, CostByUser, CostRecord, GithubOrgCost, ModelInfo, UserInfo,
+};
 use http_body_util::BodyExt;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -108,6 +110,132 @@ impl CostService for MockCostService {
         Ok(self.models.clone())
     }
 
+    async fn get_cost_by_github(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostByGithub>> {
+        Ok(vec![
+            CostByGithub {
+                org_name: "acme-corp".to_string(),
+                repo_name: "platform-api".to_string(),
+                amount: 1284.57,
+                currency: "USD".to_string(),
+            },
+            CostByGithub {
+                org_name: "acme-labs".to_string(),
+                repo_name: "ml-training".to_string(),
+                amount: 977.33,
+                currency: "USD".to_string(),
+            },
+            CostByGithub {
+                org_name: "acme-corp".to_string(),
+                repo_name: "web-frontend".to_string(),
+                amount: 642.18,
+                currency: "USD".to_string(),
+            },
+            CostByGithub {
+                org_name: "acme-corp".to_string(),
+                repo_name: "data-pipeline".to_string(),
+                amount: 389.04,
+                currency: "USD".to_string(),
+            },
+            CostByGithub {
+                org_name: "acme-labs".to_string(),
+                repo_name: "infra-terraform".to_string(),
+                amount: 156.90,
+                currency: "USD".to_string(),
+            },
+            CostByGithub {
+                org_name: "acme-corp".to_string(),
+                repo_name: "mobile-app".to_string(),
+                amount: 71.42,
+                currency: "USD".to_string(),
+            },
+        ])
+    }
+
+    async fn get_github_orgs(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<GithubOrgCost>> {
+        Ok(vec![
+            GithubOrgCost {
+                org_name: "acme-corp".to_string(),
+                amount: 2387.21,
+                currency: "USD".to_string(),
+            },
+            GithubOrgCost {
+                org_name: "acme-labs".to_string(),
+                amount: 1134.23,
+                currency: "USD".to_string(),
+            },
+        ])
+    }
+
+    async fn get_github_repos_for_org(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        org_name: &str,
+    ) -> anyhow::Result<Vec<CostByGithub>> {
+        let repos: &[(&str, f64)] = match org_name {
+            "acme-corp" => &[
+                ("platform-api", 1284.57),
+                ("web-frontend", 642.18),
+                ("data-pipeline", 389.04),
+                ("mobile-app", 71.42),
+            ],
+            "acme-labs" => &[("ml-training", 977.33), ("infra-terraform", 156.90)],
+            _ => &[],
+        };
+        Ok(repos
+            .iter()
+            .map(|(repo, amount)| CostByGithub {
+                org_name: org_name.to_string(),
+                repo_name: repo.to_string(),
+                amount: *amount,
+                currency: "USD".to_string(),
+            })
+            .collect())
+    }
+
+    async fn get_github_daily_for_repo(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _org_name: &str,
+        _repo_name: &str,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(vec![
+            CostRecord {
+                date: "2024-01-15".to_string(),
+                amount: 12.34,
+                currency: "USD".to_string(),
+            },
+            CostRecord {
+                date: "2024-01-16".to_string(),
+                amount: 56.78,
+                currency: "USD".to_string(),
+            },
+        ])
+    }
+
+    async fn get_github_monthly_for_repo(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _org_name: &str,
+        _repo_name: &str,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(vec![CostRecord {
+            date: "2024-01-01".to_string(),
+            amount: 69.12,
+            currency: "USD".to_string(),
+        }])
+    }
+
     async fn get_cost_by_models_for_user_id(
         &self,
         _start: NaiveDate,
@@ -206,7 +334,10 @@ impl CostService for MockCostService {
     }
 
     async fn list_users(&self) -> anyhow::Result<Vec<(String, String)>> {
-        Ok(vec![("aaaa-bbbb".to_string(), "alice@example.com".to_string())])
+        Ok(vec![(
+            "aaaa-bbbb".to_string(),
+            "alice@example.com".to_string(),
+        )])
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<(String, String)>> {
@@ -280,6 +411,7 @@ fn mock_state(base: &str) -> AppState {
     AppState {
         service: Arc::new(MockCostService::new()),
         base_path: base.to_string(),
+        legacy_email_map: Vec::new(),
         cognito_client_id: String::new(),
         cognito_client_secret: String::new(),
         cognito_domain: String::new(),
@@ -294,6 +426,7 @@ fn mock_state_no_profile() -> AppState {
     AppState {
         service: Arc::new(MockCostService::no_profile()),
         base_path: "/".to_string(),
+        legacy_email_map: Vec::new(),
         cognito_client_id: String::new(),
         cognito_client_secret: String::new(),
         cognito_domain: String::new(),
@@ -400,6 +533,12 @@ async fn unauthenticated_users_redirects_to_login() {
 #[tokio::test]
 async fn unauthenticated_models_redirects_to_login() {
     let (status, _) = get("/models").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
+#[tokio::test]
+async fn unauthenticated_github_costs_redirects_to_login() {
+    let (status, _) = get("/costs/github").await;
     assert!(status == 303 || status == 302 || status == 307);
 }
 
@@ -546,6 +685,13 @@ async fn nested_base_path_monthly_costs_redirect() {
     assert!(status == 303 || status == 302 || status == 307);
 }
 
+#[tokio::test]
+async fn nested_base_path_github_costs_redirect() {
+    let app = test_app_with_base("/_dashboard");
+    let (status, _) = get_from(app, "/_dashboard/costs/github").await;
+    assert!(status == 303 || status == 302 || status == 307);
+}
+
 #[cfg(not(feature = "admin"))]
 #[tokio::test]
 async fn no_profile_users_returns_403() {
@@ -608,4 +754,84 @@ async fn no_profile_models_returns_403() {
     let (status, body) = authenticated_get_no_profile("/models").await;
     assert_eq!(status, 403);
     assert!(body.contains("does not have a user profile"));
+}
+
+#[tokio::test]
+async fn legacy_service_rewrites_display_emails() {
+    use crate::service::LegacyEmailService;
+    let inner = Arc::new(MockCostService::new());
+    let svc = LegacyEmailService::new(
+        inner,
+        vec![("@example.com".to_string(), "@example.org".to_string())],
+    );
+    let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let end = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+
+    // Display: the mock's alice@example.com is rewritten to the legacy domain.
+    let users = svc.get_cost_by_users(start, end).await.unwrap();
+    assert_eq!(users[0].user_email.as_deref(), Some("alice@example.org"));
+    let email = svc.get_user_email("aaaa-bbbb").await.unwrap();
+    assert_eq!(email.as_deref(), Some("alice@example.org"));
+}
+
+#[cfg(not(feature = "admin"))]
+async fn get_with_cookie(app: &axum::Router, uri: &str, cookie: &str) -> (u16, String) {
+    let req = axum::http::Request::builder()
+        .uri(uri)
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status().as_u16();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8(body.to_vec()).unwrap())
+}
+
+#[cfg(not(feature = "admin"))]
+#[tokio::test]
+async fn top_bar_and_legacy_toggle() {
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_expiry(Expiry::OnInactivity(time::Duration::seconds(3600)));
+    let mut state = mock_state("/");
+    state.legacy_email_map = vec![("@example.com".to_string(), "@example.org".to_string())];
+    let app = build_router(state)
+        .route("/test-login", axum_get(test_login_handler))
+        .layer(session_layer);
+
+    // Log in and capture the session cookie.
+    let login_resp = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/test-login")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let cookie = login_resp
+        .headers()
+        .get("set-cookie")
+        .expect("session cookie")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // Home renders with the top bar; Normal mode is active by default.
+    let (status, body) = get_with_cookie(&app, "/", &cookie).await;
+    assert_eq!(status, 200);
+    assert!(body.contains(r#"<nav class="top-bar">"#));
+    assert!(body.contains("<b>Normal</b>"));
+    assert!(body.contains("Legacy"));
+    assert!(body.contains("GitHub"));
+
+    // Toggle into the legacy view.
+    let (status, _) = get_with_cookie(&app, "/mode/legacy", &cookie).await;
+    assert!(status == 303 || status == 302 || status == 307);
+
+    // Home now shows Legacy mode active.
+    let (status, body) = get_with_cookie(&app, "/", &cookie).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("<b>Legacy</b>"));
 }

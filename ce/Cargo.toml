@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-aws-config = { version = "1.8.14", features = ["behavior-version-latest"] }
-aws-sdk-costexplorer = "1.111.0"
-chrono = "0.4.44"
+aws-config = { version = "1.8.18", features = ["behavior-version-latest"] }
+aws-sdk-costexplorer = "1.119.0"
+chrono = "0.4.45"
 anyhow = "1.0.102"

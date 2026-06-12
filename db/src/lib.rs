@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use chrono::NaiveDate;
-use common::{ApiKeyInfo, CostByModel, CostByUser, CostRecord, CostRow, InferenceProfileInfo, ModelInfo, UserInfo};
+use common::{
+    ApiKeyInfo, CostByGithub, CostByModel, CostByUser, CostRecord, CostRow, GithubCostRow,
+    GithubOrgCost, InferenceProfileInfo, ModelInfo, UserInfo,
+};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -181,7 +184,10 @@ pub async fn list_models_enriched(pool: &PgPool) -> Result<Vec<ModelInfo>> {
         .collect())
 }
 
-pub async fn list_models_enriched_by_user_id(pool: &PgPool, user_id: Uuid) -> Result<Vec<ModelInfo>> {
+pub async fn list_models_enriched_by_user_id(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<ModelInfo>> {
     let rows = sqlx::query_as::<_, (Uuid, String, bool, bool)>(
         r#"select
             m.model_id,
@@ -197,15 +203,13 @@ pub async fn list_models_enriched_by_user_id(pool: &PgPool, user_id: Uuid) -> Re
     .await?;
     Ok(rows
         .into_iter()
-        .map(
-            |(model_id, model_name, is_disabled, protected)| ModelInfo {
-                model_id: model_id.to_string(),
-                model_name,
-                is_disabled,
-                protected,
-                user_count: 1,
-            },
-        )
+        .map(|(model_id, model_name, is_disabled, protected)| ModelInfo {
+            model_id: model_id.to_string(),
+            model_name,
+            is_disabled,
+            protected,
+            user_count: 1,
+        })
         .collect())
 }
 
@@ -328,7 +332,7 @@ pub async fn upsert_cost_rows(pool: &PgPool, rows: &[CostRow]) -> Result<()> {
                ON CONFLICT (date, user_id, model_id)
                DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency, updated_at=NOW()"#,
         )
-        .bind(&row.date)
+        .bind(row.date)
         .bind(&row.user_id)
         .bind(&row.model_id)
         .bind(row.amount)
@@ -339,7 +343,180 @@ pub async fn upsert_cost_rows(pool: &PgPool, rows: &[CostRow]) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_daily_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostRecord>> {
+pub async fn create_github_cost_table(pool: &PgPool) -> Result<()> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS github_cost (
+            date DATE NOT NULL,
+            org_name TEXT NOT NULL,
+            repo_name TEXT NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (date, org_name, repo_name)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn upsert_github_cost_rows(pool: &PgPool, rows: &[GithubCostRow]) -> Result<()> {
+    for row in rows {
+        sqlx::query(
+            r#"INSERT INTO github_cost (date, org_name, repo_name, amount, currency)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (date, org_name, repo_name)
+               DO UPDATE SET amount=EXCLUDED.amount, currency=EXCLUDED.currency, updated_at=NOW()"#,
+        )
+        .bind(row.date)
+        .bind(&row.org_name)
+        .bind(&row.repo_name)
+        .bind(row.amount)
+        .bind(&row.currency)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn get_cost_by_github(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<CostByGithub>> {
+    let rows = sqlx::query_as::<_, (String, String, f64, String)>(
+        r#"SELECT org_name, repo_name, SUM(amount), MIN(currency)
+           FROM github_cost WHERE date >= $1 AND date < $2
+           GROUP BY org_name, repo_name ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(org_name, repo_name, amount, currency)| CostByGithub {
+            org_name,
+            repo_name,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_github_orgs(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<GithubOrgCost>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT org_name, SUM(amount), MIN(currency)
+           FROM github_cost WHERE date >= $1 AND date < $2
+           GROUP BY org_name ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(org_name, amount, currency)| GithubOrgCost {
+            org_name,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_github_repos_for_org(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    org_name: &str,
+) -> Result<Vec<CostByGithub>> {
+    let rows = sqlx::query_as::<_, (String, String, f64, String)>(
+        r#"SELECT org_name, repo_name, SUM(amount), MIN(currency)
+           FROM github_cost WHERE date >= $1 AND date < $2 AND org_name = $3
+           GROUP BY org_name, repo_name ORDER BY SUM(amount) DESC"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(org_name)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(org_name, repo_name, amount, currency)| CostByGithub {
+            org_name,
+            repo_name,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_github_daily_for_repo(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    org_name: &str,
+    repo_name: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT date::text, SUM(amount), MIN(currency)
+           FROM github_cost WHERE date >= $1 AND date < $2 AND org_name = $3 AND repo_name = $4
+           GROUP BY date ORDER BY date"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(org_name)
+    .bind(repo_name)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_github_monthly_for_repo(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    org_name: &str,
+    repo_name: &str,
+) -> Result<Vec<CostRecord>> {
+    let rows = sqlx::query_as::<_, (String, f64, String)>(
+        r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
+           FROM github_cost WHERE date >= $1 AND date < $2 AND org_name = $3 AND repo_name = $4
+           GROUP BY DATE_TRUNC('month', date) ORDER BY DATE_TRUNC('month', date)"#,
+    )
+    .bind(start)
+    .bind(end)
+    .bind(org_name)
+    .bind(repo_name)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(date, amount, currency)| CostRecord {
+            date,
+            amount,
+            currency,
+        })
+        .collect())
+}
+
+pub async fn get_daily_cost(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT date::text, SUM(amount), MIN(currency)
            FROM cost WHERE date >= $1 AND date < $2
@@ -359,7 +536,11 @@ pub async fn get_daily_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> 
         .collect())
 }
 
-pub async fn get_monthly_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostRecord>> {
+pub async fn get_monthly_cost(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<CostRecord>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT to_char(DATE_TRUNC('month', date), 'YYYY-MM-DD'), SUM(amount), MIN(currency)
            FROM cost WHERE date >= $1 AND date < $2
@@ -379,7 +560,11 @@ pub async fn get_monthly_cost(pool: &PgPool, start: NaiveDate, end: NaiveDate) -
         .collect())
 }
 
-pub async fn get_cost_by_users(pool: &PgPool, start: NaiveDate, end: NaiveDate) -> Result<Vec<CostByUser>> {
+pub async fn get_cost_by_users(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<CostByUser>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT user_id, SUM(amount), MIN(currency)
            FROM cost WHERE date >= $1 AND date < $2
@@ -400,7 +585,12 @@ pub async fn get_cost_by_users(pool: &PgPool, start: NaiveDate, end: NaiveDate) 
         .collect())
 }
 
-pub async fn get_cost_by_user_id(pool: &PgPool, start: NaiveDate, end: NaiveDate, user_id: &str) -> Result<Vec<CostByUser>> {
+pub async fn get_cost_by_user_id(
+    pool: &PgPool,
+    start: NaiveDate,
+    end: NaiveDate,
+    user_id: &str,
+) -> Result<Vec<CostByUser>> {
     let rows = sqlx::query_as::<_, (String, f64, String)>(
         r#"SELECT user_id, SUM(amount), MIN(currency)
            FROM cost WHERE date >= $1 AND date < $2 AND user_id = $3

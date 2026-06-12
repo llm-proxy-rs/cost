@@ -2,6 +2,12 @@ use config::{Config, Environment, File};
 use serde::Deserialize;
 
 #[derive(Clone, Deserialize)]
+pub struct LegacyEmailMapping {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct AppConfig {
     pub cognito_client_id: String,
     pub cognito_client_secret: String,
@@ -19,6 +25,8 @@ pub struct AppConfig {
     pub port: u16,
     #[serde(default = "default_base_path")]
     pub base_path: String,
+    #[serde(default)]
+    pub legacy_email_map: Vec<LegacyEmailMapping>,
 }
 
 fn default_host() -> String {

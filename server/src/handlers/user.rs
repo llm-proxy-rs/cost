@@ -4,16 +4,13 @@ use axum::response::{Html, IntoResponse, Response};
 use tower_sessions::Session;
 
 use super::{
-    get_order, get_page, get_period, get_sort, parse_date, parse_month_range, require_login,
-    resolve_period, snap_to_month_start, AppError, AppState, PeriodParams,
+    effective_service, get_order, get_page, get_period, get_sort, parse_date, parse_month_range,
+    require_login, resolve_period, snap_to_month_start, AppError, AppState, PeriodParams,
 };
 use crate::pages;
 use crate::service::CostService;
 
-async fn require_user_id(
-    service: &dyn CostService,
-    email: &str,
-) -> Result<String, Response> {
+async fn require_user_id(service: &dyn CostService, email: &str) -> Result<String, Response> {
     match service.get_user_id_by_email(email).await {
         Ok(Some(uid)) => Ok(uid),
         Ok(None) => Err(forbidden()),
@@ -25,9 +22,17 @@ async fn require_user_id(
 }
 
 fn forbidden() -> Response {
+    // Full HTML page so the top-bar middleware can inject the nav — this lets a user
+    // whose email migrated switch into the Legacy view to find their account.
     (
         StatusCode::FORBIDDEN,
-        "Access denied. Your account does not have a user profile.",
+        Html(
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+             <title>Access denied</title></head><body>\
+             <p>Access denied. Your account does not have a user profile. \
+             If your email domain recently changed, try the Legacy view.</p>\
+             </body></html>",
+        ),
     )
         .into_response()
 }
@@ -42,7 +47,8 @@ pub async fn render_home(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -50,16 +56,11 @@ pub async fn render_home(
     let period = get_period(&params);
     let (start, end) = resolve_period(&period);
 
-    let daily_cost = state
-        .service
-        .get_daily_cost_for_user_id(start, end, &uid)
-        .await?;
-    let monthly_cost = state
-        .service
+    let daily_cost = svc.get_daily_cost_for_user_id(start, end, &uid).await?;
+    let monthly_cost = svc
         .get_monthly_cost_for_user_id(snap_to_month_start(start), end, &uid)
         .await?;
-    let model_count = state
-        .service
+    let model_count = svc
         .get_cost_by_models_for_user_id(start, end, &uid)
         .await?
         .len();
@@ -68,7 +69,7 @@ pub async fn render_home(
     let currency = daily_cost
         .first()
         .map(|r| r.currency.as_str())
-        .unwrap_or("USD");
+        .unwrap_or("USD"); // no rows in the period: default display currency to USD
 
     Ok(Html(pages::home::render(
         &state.base_path,
@@ -93,7 +94,8 @@ pub async fn render_daily_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -104,10 +106,7 @@ pub async fn render_daily_costs(
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
-    let daily_cost = state
-        .service
-        .get_daily_cost_for_user_id(start, end, &uid)
-        .await?;
+    let daily_cost = svc.get_daily_cost_for_user_id(start, end, &uid).await?;
     let daily_cost = pages::sort_records(daily_cost, sort, &order);
 
     Ok(Html(pages::costs::render(
@@ -129,7 +128,8 @@ pub async fn render_users(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -140,12 +140,8 @@ pub async fn render_users(
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
-    let costs = state
-        .service
-        .get_cost_by_user_id(start, end, &uid)
-        .await?;
-    let users_enriched = state
-        .service
+    let costs = svc.get_cost_by_user_id(start, end, &uid).await?;
+    let users_enriched = svc
         .get_user_info(&uid)
         .await?
         .into_iter()
@@ -173,7 +169,8 @@ pub async fn render_models(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -184,14 +181,8 @@ pub async fn render_models(
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
-    let costs = state
-        .service
-        .get_cost_by_models_for_user_id(start, end, &uid)
-        .await?;
-    let models_enriched = state
-        .service
-        .list_models_enriched_by_user_id(&uid)
-        .await?;
+    let costs = svc.get_cost_by_models_for_user_id(start, end, &uid).await?;
+    let models_enriched = svc.list_models_enriched_by_user_id(&uid).await?;
 
     Ok(Html(pages::models::render_index(
         &state.base_path,
@@ -216,7 +207,8 @@ pub async fn render_user_hub(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -225,12 +217,17 @@ pub async fn render_user_hub(
     }
 
     let period = get_period(&params);
-    let user_info = match state.service.get_user_info(&user_id).await? {
+    let user_info = match svc.get_user_info(&user_id).await? {
         Some(info) => info,
         None => return Ok(StatusCode::NOT_FOUND.into_response()),
     };
 
-    Ok(Html(pages::users::render_hub(&state.base_path, &period, &user_info)).into_response())
+    Ok(Html(pages::users::render_hub(
+        &state.base_path,
+        &period,
+        &user_info,
+    ))
+    .into_response())
 }
 
 pub async fn render_user_daily_costs(
@@ -244,7 +241,8 @@ pub async fn render_user_daily_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -257,15 +255,11 @@ pub async fn render_user_daily_costs(
     let sort = get_sort(&params);
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
-    let user_email = state
-        .service
+    let user_email = svc
         .get_user_email(&user_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
-    let costs = state
-        .service
-        .get_daily_cost_for_user_id(start, end, &user_id)
-        .await?;
+    let costs = svc.get_daily_cost_for_user_id(start, end, &user_id).await?;
     let costs = pages::sort_records(costs, sort, &order);
 
     Ok(Html(pages::users::render_daily_costs(
@@ -290,7 +284,8 @@ pub async fn render_user_monthly_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -303,13 +298,11 @@ pub async fn render_user_monthly_costs(
     let sort = get_sort(&params);
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
-    let user_email = state
-        .service
+    let user_email = svc
         .get_user_email(&user_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_monthly_cost_for_user_id(snap_to_month_start(start), end, &user_id)
         .await?;
     let costs = pages::sort_records(costs, sort, &order);
@@ -336,7 +329,8 @@ pub async fn render_model_hub(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -344,21 +338,23 @@ pub async fn render_model_hub(
     let period = get_period(&params);
 
     let (start, end) = resolve_period("12m");
-    let costs = state
-        .service
-        .get_cost_by_models_for_user_id(start, end, &uid)
-        .await?;
+    let costs = svc.get_cost_by_models_for_user_id(start, end, &uid).await?;
     if !costs.iter().any(|c| c.model_id == model_id) {
         return Ok(forbidden());
     }
 
-    let mut model_info = match state.service.get_model_info(&model_id).await? {
+    let mut model_info = match svc.get_model_info(&model_id).await? {
         Some(info) => info,
         None => return Ok(StatusCode::NOT_FOUND.into_response()),
     };
     model_info.user_count = 1;
 
-    Ok(Html(pages::models::render_hub(&state.base_path, &period, &model_info)).into_response())
+    Ok(Html(pages::models::render_hub(
+        &state.base_path,
+        &period,
+        &model_info,
+    ))
+    .into_response())
 }
 
 pub async fn render_model_daily_costs(
@@ -372,7 +368,8 @@ pub async fn render_model_daily_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -382,13 +379,11 @@ pub async fn render_model_daily_costs(
     let sort = get_sort(&params);
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
-    let model_name = state
-        .service
+    let model_name = svc
         .get_model_name(&model_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_daily_cost_for_user_id_and_model_id(start, end, &uid, &model_id)
         .await?;
     let costs = pages::sort_records(costs, sort, &order);
@@ -415,7 +410,8 @@ pub async fn render_model_monthly_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -425,13 +421,11 @@ pub async fn render_model_monthly_costs(
     let sort = get_sort(&params);
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
-    let model_name = state
-        .service
+    let model_name = svc
         .get_model_name(&model_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_monthly_cost_for_user_id_and_model_id(snap_to_month_start(start), end, &uid, &model_id)
         .await?;
     let costs = pages::sort_records(costs, sort, &order);
@@ -460,7 +454,8 @@ pub async fn render_date_hub(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -468,25 +463,20 @@ pub async fn render_date_hub(
     let period = get_period(&params);
     let date_nd = match parse_date(&date) {
         Ok(d) => d,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
     let next_day = date_nd + chrono::Duration::days(1);
 
-    let daily_cost = state
-        .service
+    let daily_cost = svc
         .get_daily_cost_for_user_id(date_nd, next_day, &uid)
         .await?;
     let total_cost: f64 = daily_cost.iter().map(|r| r.amount).sum();
     let currency = daily_cost
         .first()
         .map(|r| r.currency.as_str())
-        .unwrap_or("USD");
-    let users = state
-        .service
-        .get_cost_by_user_id(date_nd, next_day, &uid)
-        .await?;
-    let models = state
-        .service
+        .unwrap_or("USD"); // no rows in the period: default display currency to USD
+    let users = svc.get_cost_by_user_id(date_nd, next_day, &uid).await?;
+    let models = svc
         .get_cost_by_models_for_user_id(date_nd, next_day, &uid)
         .await?;
 
@@ -513,7 +503,8 @@ pub async fn render_date_users(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -524,14 +515,11 @@ pub async fn render_date_users(
     let order = get_order(&params);
     let date_nd = match parse_date(&date) {
         Ok(d) => d,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
     let next_day = date_nd + chrono::Duration::days(1);
 
-    let costs = state
-        .service
-        .get_cost_by_user_id(date_nd, next_day, &uid)
-        .await?;
+    let costs = svc.get_cost_by_user_id(date_nd, next_day, &uid).await?;
     let costs = pages::sort_by_user(costs, sort, &order);
 
     Ok(Html(pages::costs::render_users(
@@ -555,7 +543,8 @@ pub async fn render_date_models(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -566,12 +555,11 @@ pub async fn render_date_models(
     let order = get_order(&params);
     let date_nd = match parse_date(&date) {
         Ok(d) => d,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
     let next_day = date_nd + chrono::Duration::days(1);
 
-    let costs = state
-        .service
+    let costs = svc
         .get_cost_by_models_for_user_id(date_nd, next_day, &uid)
         .await?;
     let costs = pages::sort_by_model(costs, sort, &order);
@@ -597,7 +585,8 @@ pub async fn render_date_models_for_user(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -611,16 +600,14 @@ pub async fn render_date_models_for_user(
     let order = get_order(&params);
     let date_nd = match parse_date(&date) {
         Ok(d) => d,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
     let next_day = date_nd + chrono::Duration::days(1);
-    let user_email = state
-        .service
+    let user_email = svc
         .get_user_email(&user_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_cost_by_models_for_user_id(date_nd, next_day, &user_id)
         .await?;
     let costs = pages::sort_by_model(costs, sort, &order);
@@ -647,7 +634,8 @@ pub async fn render_date_users_for_model(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -658,16 +646,14 @@ pub async fn render_date_users_for_model(
     let order = get_order(&params);
     let date_nd = match parse_date(&date) {
         Ok(d) => d,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
     let next_day = date_nd + chrono::Duration::days(1);
-    let model_name = state
-        .service
+    let model_name = svc
         .get_model_name(&model_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_cost_by_user_id_for_model_id(date_nd, next_day, &uid, &model_id)
         .await?;
     let costs = pages::sort_by_user(costs, sort, &order);
@@ -695,7 +681,8 @@ pub async fn render_monthly_costs(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -706,8 +693,7 @@ pub async fn render_monthly_costs(
     let order = get_order(&params);
     let (start, end) = resolve_period(&period);
 
-    let monthly_cost = state
-        .service
+    let monthly_cost = svc
         .get_monthly_cost_for_user_id(snap_to_month_start(start), end, &uid)
         .await?;
     let monthly_cost = pages::sort_records(monthly_cost, sort, &order);
@@ -732,7 +718,8 @@ pub async fn render_month_hub(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -740,26 +727,17 @@ pub async fn render_month_hub(
     let period = get_period(&params);
     let (start, end) = match parse_month_range(&month) {
         Ok(r) => r,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
 
-    let daily_cost = state
-        .service
-        .get_daily_cost_for_user_id(start, end, &uid)
-        .await?;
+    let daily_cost = svc.get_daily_cost_for_user_id(start, end, &uid).await?;
     let total_cost: f64 = daily_cost.iter().map(|r| r.amount).sum();
     let currency = daily_cost
         .first()
         .map(|r| r.currency.as_str())
-        .unwrap_or("USD");
-    let users = state
-        .service
-        .get_cost_by_user_id(start, end, &uid)
-        .await?;
-    let models = state
-        .service
-        .get_cost_by_models_for_user_id(start, end, &uid)
-        .await?;
+        .unwrap_or("USD"); // no rows in the period: default display currency to USD
+    let users = svc.get_cost_by_user_id(start, end, &uid).await?;
+    let models = svc.get_cost_by_models_for_user_id(start, end, &uid).await?;
 
     Ok(Html(pages::monthly::render_hub(
         &state.base_path,
@@ -784,7 +762,8 @@ pub async fn render_month_users(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -795,13 +774,10 @@ pub async fn render_month_users(
     let order = get_order(&params);
     let (start, end) = match parse_month_range(&month) {
         Ok(r) => r,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
 
-    let costs = state
-        .service
-        .get_cost_by_user_id(start, end, &uid)
-        .await?;
+    let costs = svc.get_cost_by_user_id(start, end, &uid).await?;
     let costs = pages::sort_by_user(costs, sort, &order);
 
     Ok(Html(pages::monthly::render_users(
@@ -825,7 +801,8 @@ pub async fn render_month_models(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -836,13 +813,10 @@ pub async fn render_month_models(
     let order = get_order(&params);
     let (start, end) = match parse_month_range(&month) {
         Ok(r) => r,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
 
-    let costs = state
-        .service
-        .get_cost_by_models_for_user_id(start, end, &uid)
-        .await?;
+    let costs = svc.get_cost_by_models_for_user_id(start, end, &uid).await?;
     let costs = pages::sort_by_model(costs, sort, &order);
 
     Ok(Html(pages::monthly::render_models(
@@ -866,7 +840,8 @@ pub async fn render_month_models_for_user(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -880,15 +855,13 @@ pub async fn render_month_models_for_user(
     let order = get_order(&params);
     let (start, end) = match parse_month_range(&month) {
         Ok(r) => r,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
-    let user_email = state
-        .service
+    let user_email = svc
         .get_user_email(&user_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("User email not found for user_id: {user_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_cost_by_models_for_user_id(start, end, &user_id)
         .await?;
     let costs = pages::sort_by_model(costs, sort, &order);
@@ -915,7 +888,8 @@ pub async fn render_month_users_for_model(
         Err(redirect) => return Ok(redirect),
     };
 
-    let uid = match require_user_id(state.service.as_ref(), &email).await {
+    let svc = effective_service(&state, &session).await;
+    let uid = match require_user_id(svc.as_ref(), &email).await {
         Ok(uid) => uid,
         Err(resp) => return Ok(resp),
     };
@@ -926,15 +900,13 @@ pub async fn render_month_users_for_model(
     let order = get_order(&params);
     let (start, end) = match parse_month_range(&month) {
         Ok(r) => r,
-        Err(resp) => return Ok(resp),
+        Err(resp) => return Ok(*resp),
     };
-    let model_name = state
-        .service
+    let model_name = svc
         .get_model_name(&model_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Model name not found for model_id: {model_id}"))?;
-    let costs = state
-        .service
+    let costs = svc
         .get_cost_by_user_id_for_model_id(start, end, &uid, &model_id)
         .await?;
     let costs = pages::sort_by_user(costs, sort, &order);

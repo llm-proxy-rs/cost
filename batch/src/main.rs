@@ -10,6 +10,11 @@ struct BatchConfig {
     database_url_gateway_ro: String,
     #[serde(default = "default_incremental_days")]
     incremental_days: i64,
+    #[serde(default = "default_github_org_tag_key")]
+    github_org_tag_key: String,
+    #[serde(default = "default_github_repo_tag_key")]
+    github_repo_tag_key: String,
+    github_ce_role_arn: Option<String>,
     start: Option<String>,
     end: Option<String>,
 }
@@ -24,6 +29,14 @@ fn default_database_url_gateway_ro() -> String {
 
 fn default_incremental_days() -> i64 {
     3
+}
+
+fn default_github_org_tag_key() -> String {
+    "iamPrincipal/GithubOrgName".to_string()
+}
+
+fn default_github_repo_tag_key() -> String {
+    "iamPrincipal/GithubRepoName".to_string()
 }
 
 fn load_config() -> Result<BatchConfig> {
@@ -120,6 +133,29 @@ async fn main() -> Result<()> {
     db::create_cost_table(&pool).await?;
     db::upsert_cost_rows(&pool, &filtered_rows).await?;
     log::info!("Upserted {} rows into cost table", filtered_rows.len());
+
+    // GitHub Actions cost by org/repo. When the GitHub-tagged cost lives in a different
+    // AWS account, assume a role there.
+    let github_client = match &cfg.github_ce_role_arn {
+        Some(arn) => {
+            log::info!("Assuming role {arn} for GitHub Cost Explorer");
+            ce::new_client_for_role(arn).await
+        }
+        None => ce_client.clone(),
+    };
+    let github_rows = ce::get_daily_cost_by_github_org_and_repo(
+        &github_client,
+        &start,
+        &end,
+        &cfg.github_org_tag_key,
+        &cfg.github_repo_tag_key,
+    )
+    .await?;
+    log::info!("Fetched {} GitHub cost rows from CE", github_rows.len());
+
+    db::create_github_cost_table(&pool).await?;
+    db::upsert_github_cost_rows(&pool, &github_rows).await?;
+    log::info!("Upserted {} rows into github_cost table", github_rows.len());
 
     Ok(())
 }
