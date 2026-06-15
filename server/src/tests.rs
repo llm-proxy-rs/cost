@@ -236,6 +236,37 @@ impl CostService for MockCostService {
         }])
     }
 
+    async fn get_github_daily(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(vec![
+            CostRecord {
+                date: "2024-01-15".to_string(),
+                amount: 12.34,
+                currency: "USD".to_string(),
+            },
+            CostRecord {
+                date: "2024-01-16".to_string(),
+                amount: 56.78,
+                currency: "USD".to_string(),
+            },
+        ])
+    }
+
+    async fn get_github_monthly(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(vec![CostRecord {
+            date: "2024-01-01".to_string(),
+            amount: 69.12,
+            currency: "USD".to_string(),
+        }])
+    }
+
     async fn get_cost_by_models_for_user_id(
         &self,
         _start: NaiveDate,

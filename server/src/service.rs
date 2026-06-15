@@ -66,6 +66,16 @@ pub trait CostService: Send + Sync {
         org_name: &str,
         repo_name: &str,
     ) -> anyhow::Result<Vec<CostRecord>>;
+    async fn get_github_daily(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>>;
+    async fn get_github_monthly(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>>;
     async fn get_cost_by_models_for_user_id(
         &self,
         start: NaiveDate,
@@ -254,6 +264,22 @@ impl CostService for RealCostService {
             db::get_github_monthly_for_repo(&self.cost_pool, start, end, org_name, repo_name)
                 .await?,
         )
+    }
+
+    async fn get_github_daily(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(db::get_github_daily(&self.cost_pool, start, end).await?)
+    }
+
+    async fn get_github_monthly(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        Ok(db::get_github_monthly(&self.cost_pool, start, end).await?)
     }
 
     async fn get_cost_by_models_for_user_id(
@@ -568,6 +594,22 @@ impl CostService for LegacyEmailService {
         self.inner
             .get_github_monthly_for_repo(start, end, org_name, repo_name)
             .await
+    }
+
+    async fn get_github_daily(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        self.inner.get_github_daily(start, end).await
+    }
+
+    async fn get_github_monthly(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> anyhow::Result<Vec<CostRecord>> {
+        self.inner.get_github_monthly(start, end).await
     }
 
     async fn get_cost_by_models_for_user_id(

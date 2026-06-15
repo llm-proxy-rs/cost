@@ -64,12 +64,16 @@ pub async fn render_github_costs(
     let total: f64 = orgs.iter().map(|o| o.amount).sum();
     let currency = orgs.first().map(|o| o.currency.as_str()).unwrap_or("USD"); // no rows: default to USD
     let repo_count = state.service.get_cost_by_github(start, end).await?.len();
+    let daily_count = state.service.get_github_daily(start, end).await?.len();
+    let monthly_count = state.service.get_github_monthly(start, end).await?.len();
 
     Ok(Html(pages::github::render_hub(
         &state.base_path,
         &period,
         total,
         currency,
+        daily_count,
+        monthly_count,
         orgs.len(),
         repo_count,
         state.csv_export,
@@ -268,6 +272,355 @@ pub async fn render_github_repo_monthly(
         &org,
         &repo,
         &costs,
+    ))
+    .into_response())
+}
+
+/// GitHub-wide Daily cost list — dates clickable into a per-date hub.
+pub async fn render_github_daily(
+    session: Session,
+    State(state): State<AppState>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let (start, end) = resolve_period(&period);
+
+    let costs = state.service.get_github_daily(start, end).await?;
+    let costs = pages::sort_records(costs, sort, &order);
+
+    Ok(Html(pages::github::render_daily(
+        &state.page_ctx(&period),
+        page,
+        &costs,
+    ))
+    .into_response())
+}
+
+/// GitHub-wide Monthly cost list — months clickable into a per-month hub.
+pub async fn render_github_monthly(
+    session: Session,
+    State(state): State<AppState>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let (start, end) = resolve_period(&period);
+
+    let costs = state
+        .service
+        .get_github_monthly(snap_to_month_start(start), end)
+        .await?;
+    let costs = pages::sort_records(costs, sort, &order);
+
+    Ok(Html(pages::github::render_monthly(
+        &state.page_ctx(&period),
+        page,
+        &costs,
+    ))
+    .into_response())
+}
+
+/// Per-date hub — By Org / By Repo scoped to one day.
+pub async fn render_github_date_hub(
+    session: Session,
+    State(state): State<AppState>,
+    Path(date): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(*resp),
+    };
+    let next_day = date_nd + chrono::Duration::days(1);
+
+    let orgs = state.service.get_github_orgs(date_nd, next_day).await?;
+    let total: f64 = orgs.iter().map(|o| o.amount).sum();
+    let currency = orgs.first().map(|o| o.currency.as_str()).unwrap_or("USD"); // no rows: default to USD
+    let repo_count = state
+        .service
+        .get_cost_by_github(date_nd, next_day)
+        .await?
+        .len();
+
+    Ok(Html(pages::github::render_period_hub(
+        &state.page_ctx(&period),
+        &date,
+        false,
+        total,
+        currency,
+        orgs.len(),
+        repo_count,
+    ))
+    .into_response())
+}
+
+/// Per-date By Org list.
+pub async fn render_github_date_orgs(
+    session: Session,
+    State(state): State<AppState>,
+    Path(date): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(*resp),
+    };
+    let next_day = date_nd + chrono::Duration::days(1);
+
+    let orgs = state.service.get_github_orgs(date_nd, next_day).await?;
+
+    Ok(Html(pages::github::render_period_orgs(
+        &state.page_ctx(&period),
+        page,
+        &date,
+        false,
+        &orgs,
+        pages::TableSort::new(sort, &order),
+    ))
+    .into_response())
+}
+
+/// Per-date repos for one org.
+pub async fn render_github_date_org(
+    session: Session,
+    State(state): State<AppState>,
+    Path((date, org)): Path<(String, String)>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(*resp),
+    };
+    let next_day = date_nd + chrono::Duration::days(1);
+
+    let repos = state
+        .service
+        .get_github_repos_for_org(date_nd, next_day, &org)
+        .await?;
+
+    Ok(Html(pages::github::render_period_org(
+        &state.page_ctx(&period),
+        page,
+        &date,
+        false,
+        &org,
+        &repos,
+        pages::TableSort::new(sort, &order),
+    ))
+    .into_response())
+}
+
+/// Per-date By Repo flat list.
+pub async fn render_github_date_repos(
+    session: Session,
+    State(state): State<AppState>,
+    Path(date): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let date_nd = match parse_date(&date) {
+        Ok(d) => d,
+        Err(resp) => return Ok(*resp),
+    };
+    let next_day = date_nd + chrono::Duration::days(1);
+
+    let costs = state.service.get_cost_by_github(date_nd, next_day).await?;
+
+    Ok(Html(pages::github::render_period_repos(
+        &state.page_ctx(&period),
+        page,
+        &date,
+        false,
+        &costs,
+        pages::TableSort::new(sort, &order),
+    ))
+    .into_response())
+}
+
+/// Per-month hub — By Org / By Repo scoped to one month.
+pub async fn render_github_month_hub(
+    session: Session,
+    State(state): State<AppState>,
+    Path(month): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(range) => range,
+        Err(resp) => return Ok(*resp),
+    };
+
+    let orgs = state.service.get_github_orgs(start, end).await?;
+    let total: f64 = orgs.iter().map(|o| o.amount).sum();
+    let currency = orgs.first().map(|o| o.currency.as_str()).unwrap_or("USD"); // no rows: default to USD
+    let repo_count = state.service.get_cost_by_github(start, end).await?.len();
+
+    Ok(Html(pages::github::render_period_hub(
+        &state.page_ctx(&period),
+        &month,
+        true,
+        total,
+        currency,
+        orgs.len(),
+        repo_count,
+    ))
+    .into_response())
+}
+
+/// Per-month By Org list.
+pub async fn render_github_month_orgs(
+    session: Session,
+    State(state): State<AppState>,
+    Path(month): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(range) => range,
+        Err(resp) => return Ok(*resp),
+    };
+
+    let orgs = state.service.get_github_orgs(start, end).await?;
+
+    Ok(Html(pages::github::render_period_orgs(
+        &state.page_ctx(&period),
+        page,
+        &month,
+        true,
+        &orgs,
+        pages::TableSort::new(sort, &order),
+    ))
+    .into_response())
+}
+
+/// Per-month repos for one org.
+pub async fn render_github_month_org(
+    session: Session,
+    State(state): State<AppState>,
+    Path((month, org)): Path<(String, String)>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(range) => range,
+        Err(resp) => return Ok(*resp),
+    };
+
+    let repos = state
+        .service
+        .get_github_repos_for_org(start, end, &org)
+        .await?;
+
+    Ok(Html(pages::github::render_period_org(
+        &state.page_ctx(&period),
+        page,
+        &month,
+        true,
+        &org,
+        &repos,
+        pages::TableSort::new(sort, &order),
+    ))
+    .into_response())
+}
+
+/// Per-month By Repo flat list.
+pub async fn render_github_month_repos(
+    session: Session,
+    State(state): State<AppState>,
+    Path(month): Path<String>,
+    Query(params): Query<PeriodParams>,
+) -> Result<Response, AppError> {
+    let _email = match require_login(&session).await {
+        Ok(email) => email,
+        Err(redirect) => return Ok(redirect),
+    };
+
+    let period = get_period(&params);
+    let page = get_page(&params);
+    let sort = get_sort(&params);
+    let order = get_order(&params);
+    let (start, end) = match parse_month_range(&month) {
+        Ok(range) => range,
+        Err(resp) => return Ok(*resp),
+    };
+
+    let costs = state.service.get_cost_by_github(start, end).await?;
+
+    Ok(Html(pages::github::render_period_repos(
+        &state.page_ctx(&period),
+        page,
+        &month,
+        true,
+        &costs,
+        pages::TableSort::new(sort, &order),
     ))
     .into_response())
 }

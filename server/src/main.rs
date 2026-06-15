@@ -99,6 +99,43 @@ pub fn build_router(state: AppState) -> Router {
             "/costs/github/orgs/{org}/{repo}/monthly",
             get(handlers::render_github_repo_monthly),
         )
+        .route("/costs/github/daily", get(handlers::render_github_daily))
+        .route(
+            "/costs/github/daily/{date}",
+            get(handlers::render_github_date_hub),
+        )
+        .route(
+            "/costs/github/daily/{date}/orgs",
+            get(handlers::render_github_date_orgs),
+        )
+        .route(
+            "/costs/github/daily/{date}/orgs/{org}",
+            get(handlers::render_github_date_org),
+        )
+        .route(
+            "/costs/github/daily/{date}/repos",
+            get(handlers::render_github_date_repos),
+        )
+        .route(
+            "/costs/github/monthly",
+            get(handlers::render_github_monthly),
+        )
+        .route(
+            "/costs/github/monthly/{month}",
+            get(handlers::render_github_month_hub),
+        )
+        .route(
+            "/costs/github/monthly/{month}/orgs",
+            get(handlers::render_github_month_orgs),
+        )
+        .route(
+            "/costs/github/monthly/{month}/orgs/{org}",
+            get(handlers::render_github_month_org),
+        )
+        .route(
+            "/costs/github/monthly/{month}/repos",
+            get(handlers::render_github_month_repos),
+        )
         .route("/mode/legacy", get(handlers::set_mode_legacy))
         .route("/mode/normal", get(handlers::set_mode_normal))
         .route("/users", get(handlers::render_users))
